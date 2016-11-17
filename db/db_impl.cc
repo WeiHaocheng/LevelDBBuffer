@@ -71,6 +71,9 @@ struct DBImpl::CompactionState {
 
   uint64_t total_bytes;
 
+  //whc add
+  std::vector<FileMetaData> buffer_input;
+
   Output* current_output() { return &outputs[outputs.size()-1]; }
 
   explicit CompactionState(Compaction* c)

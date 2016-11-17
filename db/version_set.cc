@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <stdio.h>
+#include <vector>
 #include "db/filename.h"
 #include "db/log_reader.h"
 #include "db/log_writer.h"
 #include "db/memtable.h"
 #include "db/table_cache.h"
+#include "db/version_edit.h"
 #include "leveldb/env.h"
 #include "leveldb/table_builder.h"
 #include "table/merger.h"
@@ -571,6 +573,64 @@ void Version::GetOverlappingInputs(
   }
 }
 
+//whc add
+void Version::BufferGetOverlappingInputs(
+    int level,
+    const InternalKey* begin,
+    const InternalKey* end,
+    std::vector<FileMetaData*>* inputs) {
+  assert(level >= 0);
+  assert(level < config::kNumLevels);
+  inputs->clear();
+  Slice user_begin, user_end;
+  if (begin != NULL) {
+    user_begin = begin->user_key();
+  }
+  if (end != NULL) {
+    user_end = end->user_key();
+  }
+  const Comparator* user_cmp = vset_->icmp_.user_comparator();
+  for (size_t i = 0; i < files_[level].size(); ) {
+	 //whc add
+	FileMetaData* f_pre;
+	if(i>0)
+			f_pre = files_[level][i-1];
+	else f_pre=NULL;
+
+    FileMetaData* f = files_[level][i++];
+    const Slice file_start = f->smallest.user_key();
+    const Slice file_limit = f->largest.user_key();
+
+    //whc add
+    Slice file_pre_limit;
+    if(f_pre!=NULL)
+    	file_pre_limit = f_pre->largest.user_key();
+    //if(f_pre!=NULL && end != NULL && user_cmp->Compare(user_end,file_pre_limit)>0)
+    		//printf("ok!\n");
+
+    if (begin != NULL && user_cmp->Compare(file_limit, user_begin) < 0) {
+      // "f" is completely before specified range; skip it
+    } else if (end != NULL && f_pre!=NULL && user_cmp->Compare(file_pre_limit, user_end) >= 0) {
+      // "f" is completely after specified range; skip it
+    } else {
+      inputs->push_back(f);
+      if (level == 0) {
+        // Level-0 files may overlap each other.  So check if the newly
+        // added file has expanded the range.  If so, restart search.
+        if (begin != NULL && user_cmp->Compare(file_start, user_begin) < 0) {
+          user_begin = file_start;
+          inputs->clear();
+          i = 0;
+        } else if (end != NULL && user_cmp->Compare(file_limit, user_end) > 0) {
+          user_end = file_limit;
+          inputs->clear();
+          i = 0;
+        }
+      }
+    }
+  }
+}
+
 std::string Version::DebugString() const {
   std::string r;
   for (int level = 0; level < config::kNumLevels; level++) {
@@ -790,6 +850,30 @@ VersionSet::VersionSet(const std::string& dbname,
       descriptor_log_(NULL),
       dummy_versions_(this),
       current_(NULL) {
+  AppendVersion(new Version(this));
+}
+
+//whc add
+VersionSet::VersionSet(const std::string& dbname,
+                       const Options* options,
+                       TableCache* table_cache,
+                       const InternalKeyComparator* cmp,
+					   const std::string& ssdname)
+    : env_(options->env),
+      dbname_(dbname),
+      options_(options),
+      table_cache_(table_cache),
+      icmp_(*cmp),
+      next_file_number_(2),
+      manifest_file_number_(0),  // Filled by Recover()
+      last_sequence_(0),
+      log_number_(0),
+      prev_log_number_(0),
+      descriptor_file_(NULL),
+      descriptor_log_(NULL),
+      dummy_versions_(this),
+      current_(NULL),
+	  ssdname_(ssdname){
   AppendVersion(new Version(this));
 }
 
@@ -1348,6 +1432,14 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
   GetRange(c->inputs_[0], &smallest, &largest);
 
   current_->GetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
+
+  //whc add
+  //std::vector<FileMetaData*> e;
+  //InternalKey smallest2, largest2;
+ // GetRange(c->inputs_[0], &smallest2, &largest2);
+  //current_->BufferGetOverlappingInputs(level+1, &smallest2, &largest2, &e);
+
+  // printf("c size is %d, e size is %d\n",c->inputs_[1].size(),e.size());
 
   // Get entire range covered by compaction
   InternalKey all_start, all_limit;

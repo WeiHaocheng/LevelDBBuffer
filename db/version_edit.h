@@ -14,6 +14,9 @@ namespace leveldb {
 
 class VersionSet;
 
+struct Buffer;
+
+//whc change
 struct FileMetaData {
   int refs;
   int allowed_seeks;          // Seeks allowed until compaction
@@ -21,8 +24,31 @@ struct FileMetaData {
   uint64_t file_size;         // File size in bytes
   InternalKey smallest;       // Smallest internal key served by table
   InternalKey largest;        // Largest internal key served by table
+  Buffer* buffer;               //whc add
 
-  FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { }
+  FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0),buffer(NULL) { }
+};
+
+//whc add
+struct BufferTable{
+	int refs;
+	uint64_t number;
+
+	BufferTable(uint64_t n):number(n),refs(0){}
+};
+
+struct BufferNode{
+	InternalKey smallest;
+	InternalKey largest;
+	uint64_t number;
+	uint64_t size;
+};
+
+struct Buffer{
+	std::vector<BufferNode> nodes;
+	InternalKey smallest;
+	InternalKey largest;
+	uint64_t size;
 };
 
 class VersionEdit {

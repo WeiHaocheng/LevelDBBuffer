@@ -95,6 +95,14 @@ class Version {
       const InternalKey* end,           // NULL means after all keys
       std::vector<FileMetaData*>* inputs);
 
+  //whc add
+  void BufferGetOverlappingInputs(
+      int level,
+      const InternalKey* begin,
+      const InternalKey* end,
+      std::vector<FileMetaData*>* inputs);
+
+
   // Returns true iff some file in the specified level overlaps
   // some part of [*smallest_user_key,*largest_user_key].
   // smallest_user_key==NULL represents a key smaller than all keys in the DB.
@@ -139,6 +147,12 @@ class Version {
 
   // Next file to compact based on seek stats.
   FileMetaData* file_to_compact_;
+
+  //whc add
+ Buffer* endbuffers_[config::kNumLevels];
+ std::vector<FileMetaData*> files_in_ssd_;
+ const std::string ssdname_;
+
   int file_to_compact_level_;
 
   // Level that should be compacted next and its compaction score.
@@ -152,7 +166,7 @@ class Version {
         file_to_compact_(NULL),
         file_to_compact_level_(-1),
         compaction_score_(-1),
-        compaction_level_(-1) {
+        compaction_level_(-1){
   }
 
   ~Version();
@@ -168,6 +182,14 @@ class VersionSet {
              const Options* options,
              TableCache* table_cache,
              const InternalKeyComparator*);
+
+  //whc add
+  VersionSet(const std::string& dbname,
+               const Options* options,
+               TableCache* table_cache,
+               const InternalKeyComparator*,
+			   const std::string& ssdname);
+
   ~VersionSet();
 
   // Apply *edit to the current version to form a new descriptor that
@@ -268,6 +290,11 @@ class VersionSet {
   };
   const char* LevelSummary(LevelSummaryStorage* scratch) const;
 
+  //const std::string GetSSDname(){return ssdname_;}
+
+  //whc add
+   const std::string ssdname_;
+
  private:
   class Builder;
 
@@ -310,6 +337,7 @@ class VersionSet {
   log::Writer* descriptor_log_;
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;        // == dummy_versions_.prev_
+
 
   // Per-level key at which the next compaction at that level should start.
   // Either an empty string, or a valid InternalKey.
