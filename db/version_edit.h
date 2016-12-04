@@ -42,6 +42,13 @@ struct BufferNode{
 	InternalKey largest;
 	uint64_t number;
 	uint64_t size;
+	uint64_t sequence;
+
+	BufferNode(InternalKey& s,InternalKey& l,uint64_t n,uint64_t si,uint64_t se):smallest(s),
+			largest(l),
+			number(n),
+			size(si),
+			sequence(se){}
 };
 
 struct Buffer{
@@ -49,6 +56,18 @@ struct Buffer{
 	InternalKey smallest;
 	InternalKey largest;
 	uint64_t size;
+
+	Buffer(){}
+
+};
+
+struct BufferNodeEdit{
+	InternalKey smallest;
+	InternalKey largest;
+	uint64_t snumber;  //source number
+	uint64_t dnumber; // destination number
+	uint64_t size;
+	bool inend; //true is in end buffer false is not
 };
 
 class VersionEdit {
@@ -102,6 +121,23 @@ class VersionEdit {
     deleted_files_.insert(std::make_pair(level, file));
   }
 
+  //whc add
+  void AddBufferNode(int level,uint64_t snumber,
+		  uint64_t dnumber,
+		  uint64_t size,
+		  InternalKey& smallest,
+		  InternalKey& largest,
+		 bool inend ){
+	  BufferNodeEdit b;
+	  b.snumber = snumber;
+	  b.dnumber = dnumber;
+	  b.size = size;
+	  b.smallest = smallest;
+	  b.largest = largest;
+	  b.inend = inend;
+	  new_buffer_nodes.push_back(std::make_pair(level, b));
+  }
+
   void EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
 
@@ -126,6 +162,8 @@ class VersionEdit {
   std::vector< std::pair<int, InternalKey> > compact_pointers_;
   DeletedFileSet deleted_files_;
   std::vector< std::pair<int, FileMetaData> > new_files_;
+  //whc add
+  std::vector< std::pair<int, BufferNodeEdit> > new_buffer_nodes;
 };
 
 }  // namespace leveldb

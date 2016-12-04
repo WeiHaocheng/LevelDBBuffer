@@ -19,6 +19,7 @@
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "util/logging.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -681,6 +682,7 @@ class VersionSet::Builder {
   struct LevelState {
     std::set<uint64_t> deleted_files;
     FileSet* added_files;
+    std::vector<  BufferNodeEdit>  added_buffer_nodes;
   };
 
   VersionSet* vset_;
@@ -721,8 +723,32 @@ class VersionSet::Builder {
     base_->Unref();
   }
 
+//whc add
+  void BufferAddNode(Buffer** buffer,BufferNodeEdit be,uint64_t sequence){
+	  BufferNode newnode(be.smallest,be.largest,be.dnumber,be.size,sequence);
+	  BySmallestKey cmp;
+	  cmp.internal_comparator = &vset_->icmp_;
+	  if((*buffer) == NULL){
+		  (*buffer) =new  Buffer();
+		  (*buffer)->smallest = be.smallest;
+		  (*buffer)->largest = be.largest;
+		  (*buffer)->nodes.push_back(newnode);
+		  (*buffer)->size=be.size;
+	  }else{
+		  (*buffer)->nodes.push_back(newnode);
+		  (*buffer)->size+=be.size;
+		if( cmp.internal_comparator->Compare( (*buffer)->smallest,be.smallest)>0)
+			 (*buffer)->smallest = be.smallest;
+		 if( cmp.internal_comparator->Compare( (*buffer)->largest,be.largest)<0)
+			 (*buffer)->largest = be.largest;
+	  }
+
+	  //std::cout<<"new node's sequence:"<<sequence<<std::endl;
+	  //std::cout<<"num of nodes:"<<(*buffer)->nodes.size()<<std::endl;
+  }
+
   // Apply all of the edits in *edit to the current state.
-  void Apply(VersionEdit* edit) {
+void Apply(VersionEdit* edit) {
     // Update compaction pointers
     for (size_t i = 0; i < edit->compact_pointers_.size(); i++) {
       const int level = edit->compact_pointers_[i].first;
@@ -765,16 +791,34 @@ class VersionSet::Builder {
       levels_[level].deleted_files.erase(f->number);
       levels_[level].added_files->insert(f);
     }
+
+    //whc add
+    // add new buffer
+    for (size_t i = 0; i < edit->new_buffer_nodes.size(); i++){
+    	 const int level = edit->new_buffer_nodes[i].first;
+    	 BufferNodeEdit b = edit->new_buffer_nodes[i].second;
+    	 levels_[level].added_buffer_nodes.push_back(b);
+    }
   }
 
   // Save the current state in *v.
   void SaveTo(Version* v) {
     BySmallestKey cmp;
     cmp.internal_comparator = &vset_->icmp_;
+
+    //whc add
+    v->sequence_ = vset_->LastVersionSequence();
+    vset_->SetLastVersionSequence(v->sequence_ +1);
+
     for (int level = 0; level < config::kNumLevels; level++) {
       // Merge the set of added files with the set of pre-existing files.
       // Drop any deleted files.  Store the result in *v.
-      const std::vector<FileMetaData*>& base_files = base_->files_[level];
+
+    	//whc add
+    	v->endbuffers_[level] = base_->endbuffers_[level];
+    	v->files_in_ssd_[level] = base_->files_in_ssd_[level];
+
+    const std::vector<FileMetaData*>& base_files = base_->files_[level];
       std::vector<FileMetaData*>::const_iterator base_iter = base_files.begin();
       std::vector<FileMetaData*>::const_iterator base_end = base_files.end();
       const FileSet* added = levels_[level].added_files;
@@ -813,6 +857,49 @@ class VersionSet::Builder {
         }
       }
 #endif
+      //whc add
+      // add newbuffer and new ssd file to *v
+      //std::cout<<"1"<<std::endl;
+      for(int j=0;j<levels_[level].added_buffer_nodes.size();j++){
+    	 // add source ssd table ref
+    	  //std::cout<<"j:"<< j<<std::endl;
+    	  //std::cout<<"s:"<< levels_[level].added_buffer_nodes[j].snumber<<std::endl;
+    	 //std::cout<<" d:"<< levels_[level].added_buffer_nodes[j].dnumber<<std::endl;
+    	 //std::cout<<" size:"<< levels_[level].added_buffer_nodes[j].size<<std::endl;
+    	 //std::cout<<" inend:"<< levels_[level].added_buffer_nodes[j].inend<<std::endl;
+    	  uint64_t s = levels_[level].added_buffer_nodes[j].snumber;
+    	 if(v->files_in_ssd_[level-1].find(s) == v->files_in_ssd_[level-1].end()){    // this file never save
+    		 BufferTable* newbuffertable = new BufferTable(s);
+    		 newbuffertable->refs++;
+    		 v->files_in_ssd_[level-1].insert(std::make_pair(s,newbuffertable));
+    	 }else{
+    		 v->files_in_ssd_[level-1][s]->refs++;
+    	 }
+    	 //std::cout<<"s2:"<< levels_[level].added_buffer_nodes[j].snumber<<std::endl;
+    	 //std::cout<<"2"<<std::endl;
+    	 if(levels_[level].added_buffer_nodes[j].inend){
+    		 BufferNodeEdit& be = levels_[level].added_buffer_nodes[j];
+    		BufferAddNode(&(v->endbuffers_[level]),be,v->sequence_);
+    		 continue;
+    	 }
+    	 //std::cout<<"2"<<std::endl;
+    	 // add destination table buffer
+    	 uint64_t d = levels_[level].added_buffer_nodes[j].dnumber;
+    	 FileMetaData* f = NULL;
+    	 //std::cout<<"d is"<<d<<std::endl;
+    	 for(int k=0;k<v->files_[level].size();k++){
+    		 if(v->files_[level][k]->number == d){
+    			 f = v->files_[level][k];
+    		 }
+    	 }
+    	 assert(f!=NULL);
+    	 if(f==NULL)
+    		 std::cout<<"f is NULL"<<std::endl;
+    	 BufferNodeEdit& be = levels_[level].added_buffer_nodes[j];
+    	 BufferAddNode(&(f->buffer),be,v->sequence_);
+
+      }
+
     }
   }
 
@@ -849,7 +936,8 @@ VersionSet::VersionSet(const std::string& dbname,
       descriptor_file_(NULL),
       descriptor_log_(NULL),
       dummy_versions_(this),
-      current_(NULL) {
+      current_(NULL) ,
+	  last_version_sequence_(0) {                    //whc add
   AppendVersion(new Version(this));
 }
 
@@ -858,7 +946,8 @@ VersionSet::VersionSet(const std::string& dbname,
                        const Options* options,
                        TableCache* table_cache,
                        const InternalKeyComparator* cmp,
-					   const std::string& ssdname)
+					   const std::string& ssdname,
+					   TableCache* ssd_table_cache)
     : env_(options->env),
       dbname_(dbname),
       options_(options),
@@ -873,7 +962,9 @@ VersionSet::VersionSet(const std::string& dbname,
       descriptor_log_(NULL),
       dummy_versions_(this),
       current_(NULL),
-	  ssdname_(ssdname){
+	  ssdname_(ssdname),
+	  ssd_table_cache_(ssd_table_cache),
+	  last_version_sequence_(0){
   AppendVersion(new Version(this));
 }
 
@@ -1266,6 +1357,7 @@ uint64_t VersionSet::ApproximateOffsetOf(Version* v, const InternalKey& ikey) {
   return result;
 }
 
+
 void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
   for (Version* v = dummy_versions_.next_;
        v != &dummy_versions_;
@@ -1372,6 +1464,47 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   return result;
 }
 
+//whc add
+Iterator* VersionSet::MakeBufferInputIterator(Compaction* c) {
+  ReadOptions options;
+  options.verify_checksums = options_->paranoid_checks;
+  options.fill_cache = false;
+
+  // Level-0 files have to be merged together.  For other levels,
+  // we will make a concatenating iterator per level.
+  // TODO(opt): use concatenating iterator for level-0 if there is no overlap
+ //whc add
+  const int space = (c->level() == 0 ? c->inputs_[0].size()  : 1);
+
+  // whc add
+  //space--;
+
+  Iterator** list = new Iterator*[space];
+  int num = 0;
+ //whc change
+  for (int which = 0; which < 1; which++) {
+    if (!c->inputs_[which].empty()) {
+      if (c->level() + which == 0) {
+        const std::vector<FileMetaData*>& files = c->inputs_[which];
+        for (size_t i = 0; i < files.size(); i++) {
+          list[num++] = table_cache_->NewIterator(
+              options, files[i]->number, files[i]->file_size);
+        }
+      } else {
+        // Create concatenating iterator for the files from this level
+        list[num++] = NewTwoLevelIterator(
+            new Version::LevelFileNumIterator(icmp_, &c->inputs_[which]),
+            &GetFileIterator, table_cache_, options);
+      }
+    }
+  }
+  assert(num <= space);
+  Iterator* result = NewMergingIterator(&icmp_, list, num);
+  delete[] list;
+  return result;
+}
+
+
 Compaction* VersionSet::PickCompaction() {
   Compaction* c;
   int level;
@@ -1431,8 +1564,14 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
   InternalKey smallest, largest;
   GetRange(c->inputs_[0], &smallest, &largest);
 
-  current_->GetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
+ // current_->GetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
 
+  //whc change
+  if(level==1)
+	  current_->BufferGetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
+  else current_->GetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
+
+  /*
   //whc add
   //std::vector<FileMetaData*> e;
   //InternalKey smallest2, largest2;
@@ -1486,7 +1625,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
     current_->GetOverlappingInputs(level + 2, &all_start, &all_limit,
                                    &c->grandparents_);
   }
-
+*/
   if (false) {
     Log(options_->info_log, "Compacting %d '%s' .. '%s'",
         level,
@@ -1560,13 +1699,28 @@ bool Compaction::IsTrivialMove() const {
   // Avoid a move if there is lots of overlapping grandparent data.
   // Otherwise, the move could create a parent file that will require
   // a very expensive merge later on.
+  //whc change
+  if(level_==1 && vset->current_->files_[2].size()==0 && vset->current_->endbuffers_[2]==NULL)
+      return true;
+  
   return (num_input_files(0) == 1 && num_input_files(1) == 0 &&
           TotalFileSize(grandparents_) <=
-              MaxGrandParentOverlapBytes(vset->options_));
+              MaxGrandParentOverlapBytes(vset->options_) && level_!=1);
 }
 
 void Compaction::AddInputDeletions(VersionEdit* edit) {
-  for (int which = 0; which < 2; which++) {
+//just delete up level's sstable
+	for (int which = 0; which < 2; which++) {
+    for (size_t i = 0; i < inputs_[which].size(); i++) {
+      edit->DeleteFile(level_ + which, inputs_[which][i]->number);
+    }
+  }
+}
+
+//whc add
+void Compaction::AddInputUpDeletions(VersionEdit* edit) {
+//just delete up level's sstable
+	for (int which = 0; which < 1; which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
       edit->DeleteFile(level_ + which, inputs_[which][i]->number);
     }

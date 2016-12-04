@@ -121,6 +121,12 @@ class Version {
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;
 
+  // List of files per level
+   std::vector<FileMetaData*> files_[config::kNumLevels];
+
+ //whc add
+   uint64_t sequence_;
+
  private:
   friend class Compaction;
   friend class VersionSet;
@@ -143,14 +149,14 @@ class Version {
   int refs_;                    // Number of live refs to this version
 
   // List of files per level
-  std::vector<FileMetaData*> files_[config::kNumLevels];
+ //std::vector<FileMetaData*> files_[config::kNumLevels];
 
   // Next file to compact based on seek stats.
   FileMetaData* file_to_compact_;
 
   //whc add
  Buffer* endbuffers_[config::kNumLevels];
- std::vector<FileMetaData*> files_in_ssd_;
+ std::map<uint64_t,BufferTable*> files_in_ssd_[config::kNumLevels];
  const std::string ssdname_;
 
   int file_to_compact_level_;
@@ -167,6 +173,9 @@ class Version {
         file_to_compact_level_(-1),
         compaction_score_(-1),
         compaction_level_(-1){
+	  //whc add
+	  for(int i=0;i<config::kNumLevels;i++)
+		  endbuffers_[i] = NULL;
   }
 
   ~Version();
@@ -188,7 +197,8 @@ class VersionSet {
                const Options* options,
                TableCache* table_cache,
                const InternalKeyComparator*,
-			   const std::string& ssdname);
+			   const std::string& ssdname,
+			   TableCache* ssd_table_cache);
 
   ~VersionSet();
 
@@ -236,6 +246,16 @@ class VersionSet {
     last_sequence_ = s;
   }
 
+  //whc add
+  // Set the last sequence number to s.
+    void SetLastVersionSequence(uint64_t s) {
+      assert(s >= last_version_sequence_);
+      last_version_sequence_ = s;
+    }
+
+    uint64_t LastVersionSequence() const { return last_version_sequence_; }
+
+
   // Mark the specified file number as used.
   void MarkFileNumberUsed(uint64_t number);
 
@@ -269,6 +289,9 @@ class VersionSet {
   // The caller should delete the iterator when no longer needed.
   Iterator* MakeInputIterator(Compaction* c);
 
+  //whc add
+  Iterator* MakeBufferInputIterator(Compaction* c);
+
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {
     Version* v = current_;
@@ -294,6 +317,13 @@ class VersionSet {
 
   //whc add
    const std::string ssdname_;
+   TableCache*  ssd_table_cache_;
+   //void SetSSDCache(TableCache* t){ssd_table_cache_ =  t;}
+
+   Version* current_;        // == dummy_versions_.prev_
+
+ //whc add
+   //void CopyToSSD( void* state);
 
  private:
   class Builder;
@@ -332,11 +362,14 @@ class VersionSet {
   uint64_t log_number_;
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
 
+  //whc add
+  uint64_t last_version_sequence_;
+
   // Opened lazily
   WritableFile* descriptor_file_;
   log::Writer* descriptor_log_;
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
-  Version* current_;        // == dummy_versions_.prev_
+  //Version* current_;        // == dummy_versions_.prev_
 
 
   // Per-level key at which the next compaction at that level should start.
@@ -377,6 +410,9 @@ class Compaction {
   // Add all inputs to this compaction as delete operations to *edit.
   void AddInputDeletions(VersionEdit* edit);
 
+  //whc add
+  void AddInputUpDeletions(VersionEdit* edit);
+
   // Returns true if the information we have available guarantees that
   // the compaction is producing data in "level+1" for which no data exists
   // in levels greater than "level+1".
@@ -390,19 +426,27 @@ class Compaction {
   // is successful.
   void ReleaseInputs();
 
+  //whc add
+  std::vector<FileMetaData*>  GetLevelFIle(){
+	  return inputs_[0];
+  }
+  std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
+  VersionEdit edit_;
+  int level_;
+
  private:
   friend class Version;
   friend class VersionSet;
 
   Compaction(const Options* options, int level);
 
-  int level_;
+ // int level_;
   uint64_t max_output_file_size_;
   Version* input_version_;
-  VersionEdit edit_;
+  //VersionEdit edit_;
 
   // Each compaction reads inputs from "level_" and "level_+1"
-  std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
+ // std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
 
   // State used to check for number of of overlapping grandparent files
   // (parent == level_ + 1, grandparent == level_ + 2)

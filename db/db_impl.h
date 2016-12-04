@@ -22,6 +22,9 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
+//whc add
+//forward define
+//struct CompactionState;
 
 class DBImpl : public DB {
  public:
@@ -63,6 +66,8 @@ class DBImpl : public DB {
   // Samples are taken approximately once every config::kReadBytesPeriod
   // bytes.
   void RecordReadSample(Slice key);
+//whc add
+  void CopyToSSD( void* state);
 
  private:
   friend class DB;
@@ -112,6 +117,9 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status DoCompactionWork(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  //whc add
+  Status Dispatch(CompactionState* compact)
+  EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status OpenCompactionOutputFile(CompactionState* compact);
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
@@ -128,7 +136,8 @@ class DBImpl : public DB {
   const std::string dbname_;
 
   //whc add
-  const std::string ssdname_ = "tmp/vssd/";
+  const std::string ssdname_ = "/tmp/vssd";
+  TableCache* ssd_table_cache_;
 
   // table_cache_ provides its own synchronization
   TableCache* table_cache_;
