@@ -64,6 +64,11 @@ std::string InfoLogFileName(const std::string& dbname) {
   return dbname + "/LOG";
 }
 
+//whc add
+std::string WInfoLogFileName(const std::string& dbname) {
+  return dbname + "/WLOG";
+}
+
 // Return the name of the old info log file for "dbname".
 std::string OldInfoLogFileName(const std::string& dbname) {
   return dbname + "/LOG.old";

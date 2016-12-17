@@ -68,6 +68,8 @@ class DBImpl : public DB {
   void RecordReadSample(Slice key);
 //whc add
   void CopyToSSD( void* state);
+//whc add
+uint64_t GetLevelTotalSize(int level);
 
  private:
   friend class DB;
@@ -120,9 +122,13 @@ class DBImpl : public DB {
   //whc add
   Status Dispatch(CompactionState* compact)
   EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status BufferCompact(CompactionState* compact,int index)
+  EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status OpenCompactionOutputFile(CompactionState* compact);
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
+  //whc add
+  Status FinishBufferCompactionOutputFile(CompactionState* compact, Iterator* input);
   Status InstallCompactionResults(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -136,8 +142,10 @@ class DBImpl : public DB {
   const std::string dbname_;
 
   //whc add
-  const std::string ssdname_ = "/tmp/vssd";
+  //const std::string ssdname_ = "/tmp/vssd";
+  const std::string ssdname_ ;
   TableCache* ssd_table_cache_;
+  Logger* w_log;
 
   // table_cache_ provides its own synchronization
   TableCache* table_cache_;

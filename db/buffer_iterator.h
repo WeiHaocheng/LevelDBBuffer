@@ -1,14 +1,31 @@
 #ifndef STORAGE_LEVELDB_DB_BUFFER_ITERATOR_H_
 #define STORAGE_LEVELDB_DB_BUFFER_ITERATOR_H_
 
+#include <vector>
+#include <set>
+#include "db/dbformat.h"
+#include "db/log_writer.h"
+#include "db/snapshot.h"
+#include "leveldb/db.h"
+#include "leveldb/env.h"
+#include "port/port.h"
+#include "port/thread_annotations.h"
+#include "table/merger.h"
+#include "db/version_edit.h"
+#include "db/version_set.h"
+#include "leveldb/iterator.h"
+#include "leveldb/comparator.h"
+
+
 namespace leveldb{
     class BufferNodeIterator : public Iterator{
     private:
-        BufferNode node_;
-       Iterator* iter;   //对应sst的iterator
-        InternalKeyComparator icmp;
+        BufferNode* buffernode_;
+        Iterator* iterator_;   //对应sst的iterator
+        const InternalKeyComparator* icmp_;
+        
     public:
-        BufferNodeIterator(VersionSet* vset,BufferNode node);
+        BufferNodeIterator(const ReadOptions& options,VersionSet* vset,BufferNode* node);
         //在vset中拿到table_cache，icmp
         //根据传入的ssd_table_cache打开Table，然后拿到这个table的iter,,具体了流程参考table_cache的newiterator代码
         // ssd_table_cache是为ssd中的文件建立的table_cache
@@ -22,7 +39,7 @@ namespace leveldb{
         virtual Slice value() const;
         //同上
 
-        virtual Status status() const { return Status::OK(); }
+        virtual Status status() const ;
 
         virtual void Next();
        // 如果还在buffernode的范围内，将指针右移
@@ -50,17 +67,6 @@ namespace leveldb{
        //delete iter
     };
 
-    extern Iterator* NewBufferIterator(VersionSet* vset,Buffer* buffer);
-    /*
-     std::vector<Iterator*> list;
-     assert(buffer==NULL)
-     for(int i=0;i<buffer->nodes.size();i++){
-     	 BufferNodeIterator* ptr = new BufferNodeIterator(vset,buffer->nodes[i]);
-     	 list.push_back(ptr);
-     }
-     Iterator* buffer_iter =
-      NewMergingIterator(vset->icmp, &list[0], list.size());
-      return buffer_iter;
-     */
+    extern Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer);
 }
 #endif

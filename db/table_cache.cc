@@ -8,6 +8,8 @@
 #include "leveldb/env.h"
 #include "leveldb/table.h"
 #include "util/coding.h"
+#include <iostream>
+#include "error.h"
 
 namespace leveldb {
 
@@ -51,11 +53,13 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
   *handle = cache_->Lookup(key);
   if (*handle == NULL) {
     std::string fname = TableFileName(dbname_, file_number);
+    //std::cout<<"table cache findtable file name"<<fname<<std::endl;
     RandomAccessFile* file = NULL;
     Table* table = NULL;
     s = env_->NewRandomAccessFile(fname, &file);
     if (!s.ok()) {
-      std::string old_fname = SSTTableFileName(dbname_, file_number);
+        std::cout<<"err="<<errno<<std::endl;
+        std::string old_fname = SSTTableFileName(dbname_, file_number);
       if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
         s = Status::OK();
       }
@@ -66,6 +70,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
 
     if (!s.ok()) {
       assert(table == NULL);
+      //std::cout<<"err="<<errno<<std::endl;
       delete file;
       // We do not cache error results so that if the error is transient,
       // or somebody repairs the file, we recover automatically.
@@ -90,11 +95,14 @@ Iterator* TableCache::NewIterator(const ReadOptions& options,
   Cache::Handle* handle = NULL;
   Status s = FindTable(file_number, file_size, &handle);
   if (!s.ok()) {
-    return NewErrorIterator(s);
+      //std::cout<<"table cache iterator fail"<<std::endl;
+      return NewErrorIterator(s);
   }
 
   Table* table = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+  //std::cout<<"table cache iterator success"<<std::endl;
   Iterator* result = table->NewIterator(options);
+  //std::cout<<"table cache iterator success"<<std::endl;
   result->RegisterCleanup(&UnrefEntry, cache_, handle);
   if (tableptr != NULL) {
     *tableptr = table;

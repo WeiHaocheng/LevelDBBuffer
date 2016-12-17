@@ -42,6 +42,9 @@ static const int kMaxMemCompactLevel = 0;
 // Approximate gap in bytes between samples of data read during iteration.
 static const int kReadBytesPeriod = 1048576;
 
+//whc add
+static const int kBufferCompactLevel  = 1;
+
 }  // namespace config
 
 class InternalKey;
@@ -167,6 +170,9 @@ class InternalKey {
   void Clear() { rep_.clear(); }
 
   std::string DebugString() const;
+  
+  //whc add
+  std::string Rep(){return rep_;}
 };
 
 inline int InternalKeyComparator::Compare(

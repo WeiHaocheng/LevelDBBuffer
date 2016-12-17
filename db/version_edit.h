@@ -27,6 +27,8 @@ struct FileMetaData {
   Buffer* buffer;               //whc add
 
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0),buffer(NULL) { }
+  
+  //~FileMetaData(){delete buffer;}
 };
 
 //whc add
@@ -43,12 +45,14 @@ struct BufferNode{
 	uint64_t number;
 	uint64_t size;
 	uint64_t sequence;
+    uint64_t filesize;
 
-	BufferNode(InternalKey& s,InternalKey& l,uint64_t n,uint64_t si,uint64_t se):smallest(s),
+	BufferNode(InternalKey& s,InternalKey& l,uint64_t n,uint64_t si,uint64_t se,uint64_t fs):smallest(s),
 			largest(l),
 			number(n),
 			size(si),
-			sequence(se){}
+			sequence(se),
+            filesize(fs){}
 };
 
 struct Buffer{
@@ -67,6 +71,7 @@ struct BufferNodeEdit{
 	uint64_t snumber;  //source number
 	uint64_t dnumber; // destination number
 	uint64_t size;
+    uint64_t filesize;
 	bool inend; //true is in end buffer false is not
 };
 
@@ -122,19 +127,26 @@ class VersionEdit {
   }
 
   //whc add
-  void AddBufferNode(int level,uint64_t snumber,
+  void AddBufferNode(int level,uint64_t snumber,uint64_t ssize,
 		  uint64_t dnumber,
 		  uint64_t size,
 		  InternalKey& smallest,
 		  InternalKey& largest,
 		 bool inend ){
 	  BufferNodeEdit b;
-	  b.snumber = snumber;
+	  InternalKey fill;
+      b.snumber = snumber;
 	  b.dnumber = dnumber;
 	  b.size = size;
-	  b.smallest = smallest;
-	  b.largest = largest;
+	  
+      if(!inend)
+        b.smallest = smallest;
+	  else
+        b.smallest = fill;
+          
+      b.largest = largest;
 	  b.inend = inend;
+      b.filesize = ssize;
 	  new_buffer_nodes.push_back(std::make_pair(level, b));
   }
 
@@ -164,6 +176,7 @@ class VersionEdit {
   std::vector< std::pair<int, FileMetaData> > new_files_;
   //whc add
   std::vector< std::pair<int, BufferNodeEdit> > new_buffer_nodes;
+  std::vector<int> reset_end_levels;
 };
 
 }  // namespace leveldb

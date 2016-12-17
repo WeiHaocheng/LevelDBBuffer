@@ -157,6 +157,9 @@ class Version {
   //whc add
  Buffer* endbuffers_[config::kNumLevels];
  std::map<uint64_t,BufferTable*> files_in_ssd_[config::kNumLevels];
+ bool endbuffers_need_[config::kNumLevels];
+ bool endbuffers_clean_[config::kNumLevels];
+ std::vector<FileMetaData*> need_compact_[config::kNumLevels];
  const std::string ssdname_;
 
   int file_to_compact_level_;
@@ -167,6 +170,9 @@ class Version {
   double compaction_score_;
   int compaction_level_;
 
+  //whc add
+  int bc_compaction_level_;
+
   explicit Version(VersionSet* vset)
       : vset_(vset), next_(this), prev_(this), refs_(0),
         file_to_compact_(NULL),
@@ -176,6 +182,10 @@ class Version {
 	  //whc add
 	  for(int i=0;i<config::kNumLevels;i++)
 		  endbuffers_[i] = NULL;
+        for(int i=0;i<config::kNumLevels;i++)
+		  endbuffers_need_[i] = false;
+      for(int i=0;i<config::kNumLevels;i++)
+		  endbuffers_clean_[i] = false;
   }
 
   ~Version();
@@ -290,7 +300,7 @@ class VersionSet {
   Iterator* MakeInputIterator(Compaction* c);
 
   //whc add
-  Iterator* MakeBufferInputIterator(Compaction* c);
+  Iterator* MakeBufferInputIterator(FileMetaData* c);
 
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {
@@ -325,11 +335,19 @@ class VersionSet {
  //whc add
    //void CopyToSSD( void* state);
 
+ //whc add
+    bool buffer_compact_switch_;
+   
+//whc change
+    const InternalKeyComparator icmp_;
+ 
  private:
   class Builder;
 
   friend class Compaction;
   friend class Version;
+  //whc add
+  friend class BufferNodeIterator;
 
   bool ReuseManifest(const std::string& dscname, const std::string& dscbase);
 
@@ -355,7 +373,7 @@ class VersionSet {
   const std::string dbname_;
   const Options* const options_;
   TableCache* const table_cache_;
-  const InternalKeyComparator icmp_;
+  //const InternalKeyComparator icmp_;
   uint64_t next_file_number_;
   uint64_t manifest_file_number_;
   uint64_t last_sequence_;
@@ -463,6 +481,7 @@ class Compaction {
   // higher level than the ones involved in this compaction (i.e. for
   // all L >= level_ + 2).
   size_t level_ptrs_[config::kNumLevels];
+  Buffer* endbuffer;
 };
 
 }  // namespace leveldb
