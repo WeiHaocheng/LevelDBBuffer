@@ -49,9 +49,9 @@ static double MaxBytesForLevel(const Options* options, int level) {
   // the level-0 compaction threshold based on number of files.
 
   // Result for both level-0 and level-1
-  double result = 10. * 1048576.0;
+  double result = options->top_level_size;
   while (level > 1) {
-    result *= 10;
+    result *= options->amplify;
     level--;
   }
   return result;
@@ -68,6 +68,15 @@ static int64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
     sum += files[i]->file_size;
   }
   return sum;
+}
+
+//whc add
+static bool ExistFileWithoutBuffer(const std::vector<FileMetaData*>& files) {
+    for (size_t i = 0; i < files.size(); i++) {
+        if(files[i]->buffer == NULL)
+            return true;
+    }
+    return false;
 }
 
 Version::~Version() {
@@ -939,7 +948,7 @@ void Apply(VersionEdit* edit) {
     	 BufferNodeEdit& be = levels_[level].added_buffer_nodes[j];
     	 BufferAddNode(&(f->buffer),be,v->sequence_);
          
-         if(f->buffer->nodes.size() >= 5){
+         if(f->buffer->nodes.size() >= config::kThresholdBufferNum){
              vset_->buffer_compact_switch_ = true;
              v->bc_compaction_level_ = level;
              if(std::find(v->need_compact_[level].begin(),v->need_compact_[level].end(),f)
@@ -964,7 +973,8 @@ void Apply(VersionEdit* edit) {
                 std::cout<<"last->largest="<<(*files)[files->size()-1]->largest.Rep()<<std::endl;
 
                 std::cout<<"cur->smallest="<<f->smallest.Rep()<<std::endl;
-                std::cout<<"cur->number="<<f->number<<std::endl; 
+                std::cout<<"cur->number="<<f->number<<std::endl;
+                std::cout<<"level="<<level<<std::endl;  
             }
           
           
@@ -1332,8 +1342,11 @@ void VersionSet::Finalize(Version* v) {
     } else {
       // Compute the ratio of current size to size limit.
       const uint64_t level_bytes = TotalFileSize(v->files_[level]);
-      score =
-          static_cast<double>(level_bytes) / MaxBytesForLevel(options_, level);
+      //whc change
+      if(ExistFileWithoutBuffer(v->files_[level]))
+        score =
+            static_cast<double>(level_bytes) / MaxBytesForLevel(options_, level);
+      else score = -1;
     }
 
     if (score > best_score) {
@@ -1538,11 +1551,15 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
       } else {
         // Create concatenating iterator for the files from this level
         //whc add
+        /*
         for(int i=0;i<c->inputs_[which].size();i++){
-            if(c->inputs_[which][i]->buffer!=NULL)
+            if(c->inputs_[which][i]->buffer!=NULL){
+                assert(which!=0 || c->level()!=2);
                 list[num++] = NewBufferIterator(options,this,c->inputs_[which][i]->buffer);
+            }
+                //list[num++] = NewBufferIterator(options,this,c->inputs_[which][i]->buffer);
         }
-        
+        */
         //if(c->endbuffer!=NULL)
             //list[num++] = NewBufferIterator(options,this,c->endbuffer);
         
@@ -1622,7 +1639,7 @@ Compaction* VersionSet::PickCompaction() {
           current_->endbuffers_clean_[level] = true;
           std::cout<<"pickcompaction:bc compaction end buffer go "<<std::endl;
       }
-          
+      c->IsBufferCompact = true;    
       buffer_compact_switch_ = false;
       return c;
   }
@@ -1639,18 +1656,32 @@ Compaction* VersionSet::PickCompaction() {
     c = new Compaction(options_, level);
 
     // Pick the first file that comes after compact_pointer_[level]
+    //whc change
     for (size_t i = 0; i < current_->files_[level].size(); i++) {
       FileMetaData* f = current_->files_[level][i];
-      if (compact_pointer_[level].empty() ||
-          icmp_.Compare(f->largest.Encode(), compact_pointer_[level]) > 0) {
+      if( f->buffer == NULL && 
+      (compact_pointer_[level].empty() ||
+          icmp_.Compare(f->largest.Encode(), compact_pointer_[level]) > 0)) {
         c->inputs_[0].push_back(f);
         break;
       }
     }
     if (c->inputs_[0].empty()) {
-      // Wrap-around to the beginning of the key space
-      c->inputs_[0].push_back(current_->files_[level][0]);
+       //whc change
+        // Wrap-around to the beginning of the key space
+      //c->inputs_[0].push_back(current_->files_[level][0]);
+      
+      for (size_t i = 0; i < current_->files_[level].size(); i++){
+          FileMetaData* f = current_->files_[level][i];
+          if(f->buffer == NULL){
+              c->inputs_[0].push_back(f);
+              break;
+          }
+      }
     }
+    //whc add
+    assert(!c->inputs_[0].empty());
+    
   } else if (seek_compaction) {
     level = current_->file_to_compact_level_;
     c = new Compaction(options_, level);
@@ -1674,9 +1705,11 @@ Compaction* VersionSet::PickCompaction() {
   }
 
   SetupOtherInputs(c);
-
-  
-  
+  c->IsBufferCompact = false;
+  assert(c->inputs_[0][0]->buffer == NULL);
+  std::cout<<"pick compaction level: "<< c->level()<<std::endl;
+  std::cout<<"pick compaction up num: "<< c->inputs_[0].size()<<std::endl;
+  std::cout<<"pick compaction down num: "<< c->inputs_[1].size()<<std::endl;
   return c;
 }
 

@@ -451,6 +451,7 @@ class Compaction {
   std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
   VersionEdit edit_;
   int level_;
+  bool IsBufferCompact;
 
  private:
   friend class Version;

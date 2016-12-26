@@ -50,8 +50,8 @@ static const char* FLAGS_benchmarks =
     //"readrandom,"  // Extra run to allow previous compactions to quiesce
     //"readseq,"
     //"readreverse,"
-    "compact,"
-    "readrandom,"
+    //"compact,"
+    //"readrandom,"
     //"readseq,"
     //"readreverse,"
     //"fill100K,"

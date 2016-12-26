@@ -45,6 +45,9 @@ static const int kReadBytesPeriod = 1048576;
 //whc add
 static const int kBufferCompactLevel  = 1;
 
+//whc add
+static const int kThresholdBufferNum  = 5;
+
 }  // namespace config
 
 class InternalKey;

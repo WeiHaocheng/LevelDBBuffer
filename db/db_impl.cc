@@ -86,6 +86,146 @@ struct DBImpl::CompactionState {
   }
 };
 
+
+//whc add
+struct DBImpl::PartialCompactionStats{
+  int64_t micros;
+  int64_t bytes_read;
+  int64_t bytes_written;
+
+  // level compact times
+  int64_t compact_times;
+
+  // number of level file reads and writes when compaction
+  int64_t read_file_nums;
+  int64_t write_file_nums;
+  PartialCompactionStats() :
+      micros(0),
+      bytes_read(0),
+      bytes_written(0),
+      compact_times(0),
+      read_file_nums(0),
+      write_file_nums(0) { }
+  void Add(const PartialCompactionStats& c) {
+    this->micros += c.micros;
+    this->bytes_read += c.bytes_read;
+    this->bytes_written += c.bytes_written;
+    this->compact_times += c.compact_times;
+    this->read_file_nums += c.read_file_nums;
+    this->write_file_nums += c.write_file_nums;
+  }
+};
+
+struct DBImpl::OneTimeCompactionStats {
+  PartialCompactionStats partial_stats;
+  int64_t ll_file_num;
+  int64_t hl_file_num;
+  OneTimeCompactionStats() :
+      partial_stats(),
+      ll_file_num(-1),
+      hl_file_num(-1) { }
+  };
+
+// Per level compaction stats.  stats_[level] stores the stats for
+// compactions that produced data for the specified "level".
+struct DBImpl::CompactionStats {
+  static const int max_read_file_nums = 50;
+  PartialCompactionStats partial_stats;
+
+  // ll_num + hl_num compact times
+  int64_t lh_compact_times[max_read_file_nums][max_read_file_nums];
+
+  CompactionStats() : partial_stats() {
+    memset(lh_compact_times, 0, sizeof(lh_compact_times));
+  }
+
+  static void UpdateWhileCompact(const CompactionState* compact,
+                                 int64_t micros,
+                                 OneTimeCompactionStats& ll_stats,
+                                 OneTimeCompactionStats& hl_stats);
+
+  static void UpdateWhileBufferCompact(const CompactionState* compact,
+                                                 int64_t micros,
+                                                 OneTimeCompactionStats& ll_stats,
+                                                 OneTimeCompactionStats& hl_stats,
+                                                 uint64_t inputsize,
+                                                 uint64_t outputsize);
+
+
+  void Add(const OneTimeCompactionStats& c) {
+	this->partial_stats.Add(c.partial_stats);
+    if(c.ll_file_num >= 0 && c.hl_file_num >= 0) {
+      this->lh_compact_times[c.ll_file_num][c.hl_file_num] += 1;
+    }
+  }
+};
+
+void DBImpl::CompactionStats::UpdateWhileCompact(const CompactionState* compact,
+                                                 int64_t micros,
+                                                 OneTimeCompactionStats& ll_stats,
+                                                 OneTimeCompactionStats& hl_stats) {
+  // Only update read stats for low-level
+  ll_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
+  for (int i = 0; i < compact->compaction->num_input_files(0); i++) {
+    ll_stats.partial_stats.bytes_read += compact->compaction->input(0, i)->file_size;
+  }
+  // High-level
+  hl_stats.partial_stats.micros = micros;
+
+  hl_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(1);
+  for (int i = 0; i < compact->compaction->num_input_files(1); i++) {
+    hl_stats.partial_stats.bytes_read += compact->compaction->input(1, i)->file_size;
+  }
+
+  hl_stats.partial_stats.write_file_nums = compact->outputs.size();
+  for(size_t i = 0; i < compact->outputs.size(); i++) {
+    hl_stats.partial_stats.bytes_written += compact->outputs[i].file_size;
+    //std::cout<<"level write: i="<<i<<" size="<<compact->outputs[i].file_size<<std::endl;
+  }
+
+  //std::cout<<"level write:"<<hl_stats.partial_stats.bytes_written<<std::endl;
+
+  hl_stats.partial_stats.compact_times++;
+
+  hl_stats.ll_file_num = ll_stats.partial_stats.read_file_nums;
+  hl_stats.hl_file_num = hl_stats.partial_stats.read_file_nums;
+}
+
+void DBImpl::CompactionStats::UpdateWhileBufferCompact(const CompactionState* compact,
+                                                 int64_t micros,
+                                                 OneTimeCompactionStats& ll_stats,
+                                                 OneTimeCompactionStats& hl_stats,
+                                                 uint64_t inputsize,
+                                                 uint64_t outputsize) {
+  // Only update read stats for low-level
+  //hl_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
+  hl_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
+  for (int i = 0; i < compact->compaction->num_input_files(0); i++) {
+    hl_stats.partial_stats.bytes_read += compact->compaction->input(0, i)->file_size;
+  }
+  
+  // low-level(buffer total size)
+  ll_stats.partial_stats.read_file_nums = 0;
+  ll_stats.partial_stats.bytes_read += inputsize - hl_stats.partial_stats.bytes_read;
+  
+  // High-level
+  hl_stats.partial_stats.micros = micros;
+
+
+  hl_stats.partial_stats.write_file_nums = compact->outputs.size();
+  hl_stats.partial_stats.bytes_written += outputsize;
+  //std::cout<<"level write:"<<hl_stats.partial_stats.bytes_written<<std::endl;
+
+  hl_stats.partial_stats.compact_times++;
+
+  hl_stats.ll_file_num = 0;
+  hl_stats.hl_file_num = 1;
+}
+
+DBImpl::CompactionStats stats_[config::kNumLevels];
+
+
+
 // Fix user-supplied options to be reasonable
 template <class T,class V>
 static void ClipToRange(T* ptr, V minvalue, V maxvalue) {
@@ -161,7 +301,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   //whc add
   //versions_ ->SetSSDCache(ssd_table_cache_);
   //whc add
-  Status s = options_.env->NewLogger("/tmp/leveldbtest-1000/dbbench/WLOG", &w_log);
+  Status s = options_.env->NewLogger("/tmp/WLOG", &w_log);
 }
 
 DBImpl::~DBImpl() {
@@ -181,6 +321,26 @@ DBImpl::~DBImpl() {
   if (db_lock_ != NULL) {
     env_->UnlockFile(db_lock_);
   }
+  
+  //whc add
+  // print db property
+  std::string sst_property;
+  this->GetProperty("leveldb.sstables", &sst_property);
+  std::string mem_usage;
+  this->GetProperty("leveldb.approximate-memory-usage", &mem_usage);
+  std::string stats_property;
+  this->GetProperty("leveldb.stats", &stats_property);
+  std::string lh_compact_times;
+  this->GetProperty("leveldb.lh_compact_times", &lh_compact_times);
+
+//  std::cout << "##sst_property" << std::endl;
+//  std::cout << sst_property << std::endl;
+  std::cout << "##mem_usage" << std::endl;
+  std::cout << mem_usage << std::endl;
+  std::cout << "##stats_property" << std::endl;
+  std::cout << stats_property << std::endl;
+  std::cout << "##lh_compact_times" << std::endl;
+  std::cout << lh_compact_times << std::endl;
 
   delete versions_;
   if (mem_ != NULL) mem_->Unref();
@@ -548,10 +708,26 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                   meta.smallest, meta.largest);
   }
 
+/*
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = meta.file_size;
   stats_[level].Add(stats);
+*/
+
+  OneTimeCompactionStats hl_stats;
+
+  hl_stats.partial_stats.micros = env_->NowMicros() - start_micros;
+  hl_stats.partial_stats.bytes_written = meta.file_size;
+  hl_stats.partial_stats.compact_times++;
+  if(meta.file_size > 0){
+	hl_stats.partial_stats.write_file_nums++;
+    hl_stats.ll_file_num = 1;
+    hl_stats.hl_file_num = 0;
+  }
+
+  stats_[level].Add(hl_stats);
+
   return s;
 }
 
@@ -1014,7 +1190,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   //whc change
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
-    if(level != config::kBufferCompactLevel +1)
+    if((!compact->compaction->IsBufferCompact) || level != config::kBufferCompactLevel +1)
     compact->compaction->edit()->AddFile(
         level + 1,
         out.number, out.file_size, out.smallest, out.largest);
@@ -1166,6 +1342,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   delete input;
   input = NULL;
 
+/*
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros - imm_micros;
   for (int which = 0; which < 2; which++) {
@@ -1187,18 +1364,36 @@ uint64_t down_file = 0;
 for (int i = 0; i < compact->compaction->num_input_files(1); i++) {
       down_file += compact->compaction->input(1, i)->file_size;
 }
+ */
 
 //whc add
+/*
   Log(w_log,
   "whc inlevel%d 1file:%lld 2file:%lld output:%lld \n",
   compact->compaction->level(),
   up_file,
   down_file,
   output_size);
+*/
   
   mutex_.Lock();
-  stats_[compact->compaction->level() + 1].Add(stats);
+  //stats_[compact->compaction->level() + 1].Add(stats);
+  
+  //whc add
+  //statistics work
+  
+  if (status.ok()){
+      OneTimeCompactionStats ll_stats;
+      OneTimeCompactionStats hl_stats;
 
+      int mylevel = compact->compaction->level();
+      int64_t micros = env_->NowMicros() - start_micros - imm_micros;
+
+      CompactionStats::UpdateWhileCompact(compact, micros, ll_stats, hl_stats);
+      stats_[compact->compaction->level()].Add(ll_stats);
+      stats_[compact->compaction->level() + 1].Add(hl_stats);
+  }
+  
   if (status.ok()) {
     status = InstallCompactionResults(compact);
   }
@@ -1317,6 +1512,8 @@ Status DBImpl::Dispatch(CompactionState* compact) {
       CompactionState* compact = new CompactionState(c);
       for(int index = 0;index < compact->compaction->inputs_[0].size();index++){
           status = BufferCompact(compact,index);
+          if (!status.ok())
+              break;
       }
       
       if(!status.ok()){
@@ -1480,24 +1677,18 @@ Status DBImpl::BufferCompact(CompactionState* compact,int index){
       status = Status::IOError("Deleting DB during compaction");
   }
   
-  if(status.ok()){
-       //std::cout<<"buffer compact end loop status ok 2"<<std::endl;
-   }
    
   if (status.ok() && compact->builder != NULL) {
     status = FinishCompactionOutputFile(compact, input);
   }
   
-  if(status.ok()){
-       //std::cout<<"buffer compact end loop status ok 3"<<std::endl;
-   }
-   
+  
   if (status.ok()) {
     status = input->status();
   }
   delete input;
   input = NULL;
-  
+  /*
   CompactionStats stats;
   int nodenum = 0;
   stats.micros = env_->NowMicros() - start_micros - imm_micros;
@@ -1517,8 +1708,20 @@ Status DBImpl::BufferCompact(CompactionState* compact,int index){
   compact->compaction->input(0, index)->file_size,
   input_size-compact->compaction->input(0, index)->file_size,
   output_size);
-
+*/
   mutex_.Lock();
+  
+  if (status.ok()){
+      OneTimeCompactionStats ll_stats;
+      OneTimeCompactionStats hl_stats;
+
+      int mylevel = compact->compaction->level();
+      int64_t micros = env_->NowMicros() - start_micros - imm_micros;
+
+      CompactionStats::UpdateWhileBufferCompact(compact, micros, ll_stats, hl_stats,input_size,output_size);
+      stats_[compact->compaction->level()-1].Add(ll_stats);
+      stats_[compact->compaction->level()].Add(hl_stats);
+  }
     
     return status;
 }
@@ -1880,26 +2083,30 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
       return true;
     }
   } else if (in == "stats") {
+    //whc change
     char buf[200];
     snprintf(buf, sizeof(buf),
              "                               Compactions\n"
-             "Level  Files Size(MB) Time(sec) Read(MB) Write(MB)\n"
+             "Level  Files Size(MB) Time(sec) Read(GB) Write(GB) ReadFiles WriteFiles CompactTimes\n"
              "--------------------------------------------------\n"
              );
     value->append(buf);
     for (int level = 0; level < config::kNumLevels; level++) {
       int files = versions_->NumLevelFiles(level);
-      if (stats_[level].micros > 0 || files > 0) {
-        snprintf(
-            buf, sizeof(buf),
-            "%3d %8d %8.0f %9.0f %8.0f %9.0f\n",
-            level,
-            files,
-            versions_->NumLevelBytes(level) / 1048576.0,
-            stats_[level].micros / 1e6,
-            stats_[level].bytes_read / 1048576.0,
-            stats_[level].bytes_written / 1048576.0);
-        value->append(buf);
+      if (stats_[level].partial_stats.micros > 0 || files > 0) {
+        snprintf(buf,
+                 sizeof(buf),
+                 "%3d %8d %8.0f %9.0f %8.0f %9.0f %10lld %10lld %10lld\n",
+                 level,
+                 files,
+                 versions_->NumLevelBytes(level) / 1048576.0,
+                 stats_[level].partial_stats.micros / 1e6,
+                 stats_[level].partial_stats.bytes_read / 1048576.0,
+                 stats_[level].partial_stats.bytes_written / 1048576.0,
+                 stats_[level].partial_stats.read_file_nums,
+                 stats_[level].partial_stats.write_file_nums,
+                 stats_[level].partial_stats.compact_times);
+                 value->append(buf);
       }
     }
     return true;
@@ -1919,6 +2126,24 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
              static_cast<unsigned long long>(total_usage));
     value->append(buf);
     return true;
+  }else if (in == "lh_compact_times"){   // whc add
+    char buf[10];
+    for (int level = 1; level < config::kNumLevels; level++) {
+      int files = versions_->NumLevelFiles(level);
+      if (stats_[level].partial_stats.micros > 0 || files > 0) {
+        snprintf(buf, sizeof(buf), "Level%d: ", level);
+        value->append(buf);
+        for(int i = 0; i < stats_[level-1].max_read_file_nums; i++){
+          for(int j = 0; j < stats_[level].max_read_file_nums; j++){
+            if(stats_[level].lh_compact_times[i][j] > 0){
+              snprintf(buf, sizeof(buf), "%d+%d,%lld;", i, j, stats_[level].lh_compact_times[i][j]);
+              value->append(buf);
+            }
+          }
+        }
+        value->append("\n");
+      }
+    }
   }
 
   return false;
@@ -1971,6 +2196,10 @@ Status DB::Open(const Options& options, const std::string& dbname,
   *dbptr = NULL;
 
   DBImpl* impl = new DBImpl(options, dbname);
+  
+  //whc add
+  std::cout << "amplify=" << options.amplify << std::endl;
+  
   impl->mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists

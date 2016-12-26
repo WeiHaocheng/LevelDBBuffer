@@ -69,7 +69,12 @@ class DBImpl : public DB {
 //whc add
   void CopyToSSD( void* state);
 //whc add
-uint64_t GetLevelTotalSize(int level);
+  uint64_t GetLevelTotalSize(int level);
+
+//whc add
+  struct PartialCompactionStats;
+  struct OneTimeCompactionStats;
+  struct CompactionStats;
 
  private:
   friend class DB;
@@ -193,6 +198,7 @@ uint64_t GetLevelTotalSize(int level);
   // Have we encountered a background error in paranoid mode?
   Status bg_error_;
 
+/*
   // Per level compaction stats.  stats_[level] stores the stats for
   // compactions that produced data for the specified "level".
   struct CompactionStats {
@@ -209,7 +215,7 @@ uint64_t GetLevelTotalSize(int level);
     }
   };
   CompactionStats stats_[config::kNumLevels];
-
+*/
   // No copying allowed
   DBImpl(const DBImpl&);
   void operator=(const DBImpl&);

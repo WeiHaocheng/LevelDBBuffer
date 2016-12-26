@@ -153,6 +153,16 @@ struct Options {
   // Default: NULL
   const FilterPolicy* filter_policy;
 
+  //whc add
+  // sizeof(level+1) / sizeof(level)
+  // Default: 10.0
+  double amplify;
+
+  // sizeof(level1)
+  // Default: 10*1024*1024
+  double top_level_size;
+  
+  
   // Create an Options object with default values for all fields.
   Options();
 };
