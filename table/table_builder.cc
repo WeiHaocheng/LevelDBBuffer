@@ -14,6 +14,7 @@
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -215,6 +216,8 @@ Status TableBuilder::Finish() {
     BlockBuilder meta_index_block(&r->options);
     if (r->filter_block != NULL) {
       // Add mapping from "filter.Name" to location of filter data
+      //whc add
+      //std::cout<<"table builder create filter"<<std::endl;
       std::string key = "filter.";
       key.append(r->options.filter_policy->Name());
       std::string handle_encoding;

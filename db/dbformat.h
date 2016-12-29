@@ -43,12 +43,25 @@ static const int kMaxMemCompactLevel = 0;
 static const int kReadBytesPeriod = 1048576;
 
 //whc add
-static const int kBufferCompactLevel  = 1;
+static const int kBufferCompactLevel  = 10;
 
 //whc add
 static const int kThresholdBufferNum  = 5;
 
+
 }  // namespace config
+
+
+//whc add
+class BCJudge{
+    public:
+    static bool IsBufferCompactLevel(int level){
+        //return (level >= config::kBufferCompactLevel);
+        return (level==config::kBufferCompactLevel);
+    }
+};
+
+
 
 class InternalKey;
 

@@ -47,7 +47,7 @@ static const char* FLAGS_benchmarks =
     "fillrandom,"
     //"overwrite,"
     //"readrandom,"
-    //"readrandom,"  // Extra run to allow previous compactions to quiesce
+    "readrandom,"  // Extra run to allow previous compactions to quiesce
     //"readseq,"
     //"readreverse,"
     //"compact,"
@@ -62,7 +62,7 @@ static const char* FLAGS_benchmarks =
     ;
 
 // Number of key/values to place in database
-static int FLAGS_num = 10000000;
+static int FLAGS_num = 1000000;
 
 // Number of read operations to do.  If negative, do FLAGS_num reads.
 static int FLAGS_reads = -1;
@@ -716,7 +716,7 @@ class Benchmark {
     options.max_file_size = FLAGS_max_file_size;
     options.block_size = FLAGS_block_size;
     options.max_open_files = FLAGS_open_files;
-    options.filter_policy = filter_policy_;
+    //options.filter_policy = filter_policy_;
     options.reuse_logs = FLAGS_reuse_logs;
     Status s = DB::Open(options, FLAGS_db, &db_);
     if (!s.ok()) {

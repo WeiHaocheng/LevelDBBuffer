@@ -981,8 +981,9 @@ void DBImpl::BackgroundCompaction() {
    //CopyToSSD(compact);
    // status = DoCompactionWork(compact);
    //whc change
-  if(compact->compaction->level_== config::kBufferCompactLevel){
-	  //mutex_.Unlock();
+  //if(compact->compaction->level_== config::kBufferCompactLevel){
+  if(BCJudge::IsBufferCompactLevel(compact->compaction->level_)){
+      //mutex_.Unlock();
       //CopyToSSD(compact);
       //mutex_.Lock();
 	  //std::cout<<"Have copied to SSD"<<std::endl;
@@ -1020,10 +1021,10 @@ void DBImpl::BackgroundCompaction() {
     manual_compaction_ = NULL;
   }
   //whc add
-  for(int i=0;i<config::kNumLevels;i++){
-      std::cout<<"level"<<i<<"  nums: "<<versions_->current_->NumFiles(i)
-      <<"  total size: "<<GetLevelTotalSize(i)<<std::endl;
-  }
+  //for(int i=0;i<config::kNumLevels;i++){
+      //std::cout<<"level"<<i<<"  nums: "<<versions_->current_->NumFiles(i)
+      //<<"  total size: "<<GetLevelTotalSize(i)<<std::endl;
+  //}
 
 }
 
@@ -1183,14 +1184,15 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
  //whc change
   const int level = compact->compaction->level();
   // Add compaction outputs
- if(level != config::kBufferCompactLevel)
+ if(!BCJudge::IsBufferCompactLevel(level))
 	 compact->compaction->AddInputDeletions(compact->compaction->edit());
  else compact->compaction->AddInputUpDeletions(compact->compaction->edit());
  //const int level = compact->compaction->level();
   //whc change
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
-    if((!compact->compaction->IsBufferCompact) || level != config::kBufferCompactLevel +1)
+    //if((!compact->compaction->IsBufferCompact) || level != config::kBufferCompactLevel +1)
+    if((!compact->compaction->IsBufferCompact) || (!BCJudge::IsBufferCompactLevel(level-1)))
     compact->compaction->edit()->AddFile(
         level + 1,
         out.number, out.file_size, out.smallest, out.largest);
@@ -1235,7 +1237,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
   for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
-    input_size += input->key().size() + input->value().size();
+    //input_size += input->key().size() + input->value().size();
       // Prioritize immutable compaction work
     if (has_imm_.NoBarrier_Load() != NULL) {
       const uint64_t imm_start = env_->NowMicros();
@@ -1303,7 +1305,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 #endif
 
     if (!drop) {
-      output_size += input->key().size() + input->value().size();
+      //output_size += input->key().size() + input->value().size();
         // Open output file if necessary
       if (compact->builder == NULL) {
         status = OpenCompactionOutputFile(compact);
@@ -1820,13 +1822,17 @@ Status DBImpl::Get(const ReadOptions& options,
     } else if (imm != NULL && imm->Get(lkey, value, &s)) {
       // Done
     } else {
-      s = current->Get(options, lkey, value, &stats);
+      //s = current->Get(options, lkey, value, &stats);
+      // whc change
+      s = current->BufferGet(options, lkey, value, &stats);
       have_stat_update = true;
     }
     mutex_.Lock();
   }
 
-  if (have_stat_update && current->UpdateStats(stats)) {
+  //if (have_stat_update && current->UpdateStats(stats)) {
+    //whc change
+  if (have_stat_update) {  
     MaybeScheduleCompaction();
   }
   mem->Unref();

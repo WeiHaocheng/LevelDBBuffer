@@ -450,6 +450,131 @@ Status Version::Get(const ReadOptions& options,
   return Status::NotFound(Slice());  // Use an empty error message for speed
 }
 
+
+Status Version::BufferGet(const ReadOptions& options,
+                    const LookupKey& k,
+                    std::string* value,
+                    GetStats* stats) {
+  Slice ikey = k.internal_key();
+  Slice user_key = k.user_key();
+  const Comparator* ucmp = vset_->icmp_.user_comparator();
+  Status s;
+
+  stats->seek_file = NULL;
+  stats->seek_file_level = -1;
+  FileMetaData* last_file_read = NULL;
+  int last_file_read_level = -1;
+
+  // We can search level-by-level since entries never hop across
+  // levels.  Therefore we are guaranteed that if we find data
+  // in an smaller level, later levels are irrelevant.
+  std::vector<FileMetaData*> tmp;
+  FileMetaData* tmp2;
+  for (int level = 0; level < config::kNumLevels; level++) {
+    size_t num_files = files_[level].size();
+    if (num_files == 0) continue;
+
+    // Get the list of files to search in this level
+    FileMetaData* const* files = &files_[level][0];
+    if (level == 0) {
+      // Level-0 files may overlap each other.  Find all files that
+      // overlap user_key and process them in order from newest to oldest.
+      tmp.reserve(num_files);
+      for (uint32_t i = 0; i < num_files; i++) {
+        FileMetaData* f = files[i];
+        if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
+            ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
+          tmp.push_back(f);
+        }
+      }
+      if (tmp.empty()) continue;
+
+      std::sort(tmp.begin(), tmp.end(), NewestFirst);
+      files = &tmp[0];
+      num_files = tmp.size();
+    } else {
+      // Binary search to find earliest index whose largest key >= ikey.
+      uint32_t index = FindFile(vset_->icmp_, files_[level], ikey);
+      if (index >= num_files) {
+        index = num_files-1;   //get last sstable's buffer
+      } 
+        tmp2 = files[index];
+        files = &tmp2;
+        num_files = 1;
+    }
+
+    for (uint32_t i = 0; i < num_files; ++i) {
+      if (last_file_read != NULL && stats->seek_file == NULL) {
+        // We have had more than one seek for this read.  Charge the 1st file.
+        stats->seek_file = last_file_read;
+        stats->seek_file_level = last_file_read_level;
+      }
+
+      FileMetaData* f = files[i];
+      last_file_read = f;
+      last_file_read_level = level;
+
+      Saver saver;
+      saver.state = kNotFound;
+      saver.ucmp = ucmp;
+      saver.user_key = user_key;
+      saver.value = value;
+      
+      //whc add
+      if(f->buffer != NULL){
+          for(int i=f->buffer->nodes.size()-1;i>=0;i--){
+              if(f->buffer->nodes[i].sequence > sequence_)
+                continue;
+              
+              if(ucmp->Compare(user_key, f->buffer->nodes[i].largest.user_key()) > 0)
+                continue;
+              
+              s = vset_->ssd_table_cache_->Get(options, f->buffer->nodes[i].number, f->buffer->nodes[i].filesize,
+                                   ikey, &saver, SaveValue);
+              if (!s.ok()) {
+                return s;
+              }
+              switch (saver.state) {
+                case kNotFound:
+                    continue;      // Keep searching in other files
+                case kFound:
+                    return s;
+                case kDeleted:
+                    s = Status::NotFound(Slice());  // Use empty error message for speed
+                    return s;
+                case kCorrupt:
+                    s = Status::Corruption("corrupted key for ", user_key);
+                    return s;
+              }
+          
+          }
+          
+          
+      }
+      
+      s = vset_->table_cache_->Get(options, f->number, f->file_size,
+                                   ikey, &saver, SaveValue);
+      if (!s.ok()) {
+        return s;
+      }
+      switch (saver.state) {
+        case kNotFound:
+          break;      // Keep searching in other files
+        case kFound:
+          return s;
+        case kDeleted:
+          s = Status::NotFound(Slice());  // Use empty error message for speed
+          return s;
+        case kCorrupt:
+          s = Status::Corruption("corrupted key for ", user_key);
+          return s;
+      }
+    }
+  }
+
+  return Status::NotFound(Slice());  // Use an empty error message for speed
+}
+
 bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != NULL) {
@@ -1626,7 +1751,7 @@ Compaction* VersionSet::PickCompaction() {
   //whc add
   if(buffer_compact_switch_){
       level = current_->bc_compaction_level_;
-      std::cout<<"bc compaction level is: "<<current_->bc_compaction_level_<<std::endl;
+      std::cout<<"pickcompaction:bc compaction level is: "<<current_->bc_compaction_level_<<std::endl;
       c = new Compaction(options_, level);
       c->inputs_[0] = current_->need_compact_[level];
       //std::cout<<"pickcompaction:bc compaction input num "<<c->inputs_[0].size()<<std::endl;
@@ -1683,6 +1808,7 @@ Compaction* VersionSet::PickCompaction() {
     assert(!c->inputs_[0].empty());
     
   } else if (seek_compaction) {
+    std::cout<<"pickcompaction:seek_compaction "<<std::endl;
     level = current_->file_to_compact_level_;
     c = new Compaction(options_, level);
     c->inputs_[0].push_back(current_->file_to_compact_);
@@ -1706,10 +1832,11 @@ Compaction* VersionSet::PickCompaction() {
 
   SetupOtherInputs(c);
   c->IsBufferCompact = false;
+  std::cout<<"pickcompaction:level= "<<level<<std::endl;
   assert(c->inputs_[0][0]->buffer == NULL);
-  std::cout<<"pick compaction level: "<< c->level()<<std::endl;
-  std::cout<<"pick compaction up num: "<< c->inputs_[0].size()<<std::endl;
-  std::cout<<"pick compaction down num: "<< c->inputs_[1].size()<<std::endl;
+  //std::cout<<"pick compaction level: "<< c->level()<<std::endl;
+  //std::cout<<"pick compaction up num: "<< c->inputs_[0].size()<<std::endl;
+  //std::cout<<"pick compaction down num: "<< c->inputs_[1].size()<<std::endl;
   return c;
 }
 
@@ -1722,7 +1849,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {
 
   //whc change
   
-  if(level==config::kBufferCompactLevel)
+  if(BCJudge::IsBufferCompactLevel(level))
 	  current_->BufferGetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
   else current_->GetOverlappingInputs(level+1, &smallest, &largest, &c->inputs_[1]);
   
@@ -1857,14 +1984,14 @@ bool Compaction::IsTrivialMove() const {
   // Otherwise, the move could create a parent file that will require
   // a very expensive merge later on.
   //whc change
-  if(level_==config::kBufferCompactLevel &&
-  config::kBufferCompactLevel+1 < config::kNumLevels
-  && vset->current_->files_[config::kBufferCompactLevel+1].size()==0 )
+  if(BCJudge::IsBufferCompactLevel(level_) &&
+  level_+1 < config::kNumLevels
+  && vset->current_->files_[level_+1].size()==0 )
       return true;
   
   return (num_input_files(0) == 1 && num_input_files(1) == 0 &&
           TotalFileSize(grandparents_) <=
-              MaxGrandParentOverlapBytes(vset->options_) && level_!=config::kBufferCompactLevel);
+              MaxGrandParentOverlapBytes(vset->options_) && !(BCJudge::IsBufferCompactLevel(level_)));
 }
 
 void Compaction::AddInputDeletions(VersionEdit* edit) {

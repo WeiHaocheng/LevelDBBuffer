@@ -14,6 +14,7 @@
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -111,6 +112,7 @@ void Table::ReadMeta(const Footer& footer) {
   key.append(rep_->options.filter_policy->Name());
   iter->Seek(key);
   if (iter->Valid() && iter->key() == Slice(key)) {
+    //std::cout<<"table open read filter"<<std::endl;
     ReadFilter(iter->value());
   }
   delete iter;
@@ -233,15 +235,23 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
     Slice handle_value = iiter->value();
     FilterBlockReader* filter = rep_->filter;
     BlockHandle handle;
+    
+    //whc add
+    //if(filter==NULL)
+        //std::cout<<"table get no filter"<<std::endl;
+    
     if (filter != NULL &&
         handle.DecodeFrom(&handle_value).ok() &&
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
+      //std::cout<<"table get filter not found"<<std::endl;
     } else {
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);
       if (block_iter->Valid()) {
         (*saver)(arg, block_iter->key(), block_iter->value());
+      }else{
+          std::cout<<"table get not found"<<std::endl;
       }
       s = block_iter->status();
       delete block_iter;
