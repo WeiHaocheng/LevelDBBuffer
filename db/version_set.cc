@@ -1468,10 +1468,13 @@ void VersionSet::Finalize(Version* v) {
       // Compute the ratio of current size to size limit.
       const uint64_t level_bytes = TotalFileSize(v->files_[level]);
       //whc change
-      if(ExistFileWithoutBuffer(v->files_[level]))
+      if((!BCJudge::IsBufferCompactLevel(level)) || ExistFileWithoutBuffer(v->files_[level]))
         score =
             static_cast<double>(level_bytes) / MaxBytesForLevel(options_, level);
       else score = -1;
+      
+      Log(w_log,"socere:level=%d score=%lf\n",
+        level,score);
     }
 
     if (score > best_score) {
@@ -1624,6 +1627,20 @@ void VersionSet::GetRange(const std::vector<FileMetaData*>& inputs,
   largest->Clear();
   for (size_t i = 0; i < inputs.size(); i++) {
     FileMetaData* f = inputs[i];
+    
+    //whc add
+    ReadOptions options;
+    if(f->buffer != NULL){
+        for(int i=0;i<f->buffer->nodes.size();i++){
+            BufferNodeIterator* ptr = new BufferNodeIterator(options,this,&(f->buffer->nodes[i]));
+            InternalKey nodesmallest;
+            nodesmallest.DecodeFrom(ptr->key());
+            if(icmp_.Compare(f->smallest, nodesmallest) > 0)
+                f->smallest = nodesmallest;
+            delete(ptr);
+        }
+    }
+    
     if (i == 0) {
       *smallest = f->smallest;
       *largest = f->largest;
@@ -1687,6 +1704,15 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
         */
         //if(c->endbuffer!=NULL)
             //list[num++] = NewBufferIterator(options,this,c->endbuffer);
+        //whc add
+        if(c->inputs_[which].size()==0)
+            continue;
+        
+        for(int i=0;i<c->inputs_[which].size();i++){
+            if(c->inputs_[which][i]->buffer!=NULL)
+                list[num++] = NewBufferIterator(options,this,c->inputs_[which][i]->buffer);
+        }
+            
         
         list[num++] = NewTwoLevelIterator(
             new Version::LevelFileNumIterator(icmp_, &c->inputs_[which]),
@@ -1784,7 +1810,7 @@ Compaction* VersionSet::PickCompaction() {
     //whc change
     for (size_t i = 0; i < current_->files_[level].size(); i++) {
       FileMetaData* f = current_->files_[level][i];
-      if( f->buffer == NULL && 
+      if( (f->buffer == NULL || (!BCJudge::IsBufferCompactLevel(level)))&& 
       (compact_pointer_[level].empty() ||
           icmp_.Compare(f->largest.Encode(), compact_pointer_[level]) > 0)) {
         c->inputs_[0].push_back(f);
@@ -1798,7 +1824,7 @@ Compaction* VersionSet::PickCompaction() {
       
       for (size_t i = 0; i < current_->files_[level].size(); i++){
           FileMetaData* f = current_->files_[level][i];
-          if(f->buffer == NULL){
+          if(f->buffer == NULL || (!BCJudge::IsBufferCompactLevel(level))){
               c->inputs_[0].push_back(f);
               break;
           }
@@ -1833,10 +1859,22 @@ Compaction* VersionSet::PickCompaction() {
   SetupOtherInputs(c);
   c->IsBufferCompact = false;
   std::cout<<"pickcompaction:level= "<<level<<std::endl;
-  assert(c->inputs_[0][0]->buffer == NULL);
+  //assert(c->inputs_[0][0]->buffer == NULL);
   //std::cout<<"pick compaction level: "<< c->level()<<std::endl;
   //std::cout<<"pick compaction up num: "<< c->inputs_[0].size()<<std::endl;
   //std::cout<<"pick compaction down num: "<< c->inputs_[1].size()<<std::endl;
+  
+  //whc add
+  
+  if(c->inputs_[1].size()>15){
+      std::cout<<"pickcompaction: unexpected!!!!!! "<<std::endl;
+      std::cout<<"size="<<c->inputs_[0][0]->file_size<<" smallest="<< c->inputs_[0][0]->smallest.Rep()
+      <<" largest="<< c->inputs_[0][0]->largest.Rep()<<std::endl;
+      for(int i=0;i<c->inputs_[1].size();i++){
+          std::cout<<"size="<<c->inputs_[1][i]->file_size<<" smallest="<< c->inputs_[1][i]->smallest.Rep()
+      <<" largest="<< c->inputs_[1][i]->largest.Rep()<<std::endl;
+      }
+  }
   return c;
 }
 
@@ -1991,7 +2029,8 @@ bool Compaction::IsTrivialMove() const {
   
   return (num_input_files(0) == 1 && num_input_files(1) == 0 &&
           TotalFileSize(grandparents_) <=
-              MaxGrandParentOverlapBytes(vset->options_) && !(BCJudge::IsBufferCompactLevel(level_)));
+              MaxGrandParentOverlapBytes(vset->options_) && (!BCJudge::IsBufferCompactLevel(level_))
+              && inputs_[0][0]->buffer == NULL);
 }
 
 void Compaction::AddInputDeletions(VersionEdit* edit) {

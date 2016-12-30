@@ -26,7 +26,7 @@ bool BufferNodeIterator::Valid() const {
     //std::cout<<"buffer node iterator valid node number"<<buffernode_->number<<std::endl;
     //std::cout<<"buffer node iterator valid smallest:"<<buffernode_->smallest.Rep()<<std::endl;
     if (!iterator_->Valid()){
-      //std::cout<<"buffer node iterator not valid"<<std::endl;
+      std::cout<<"buffer node iterator not valid"<<std::endl;
       return false; 
   } 
   
@@ -39,7 +39,7 @@ bool BufferNodeIterator::Valid() const {
   
   //std::cout<<"buffer node iterator valid result"<<result<<std::endl; 
   if(icmp_->Compare(k,buffernode_->largest.Encode()) > 0){
-      std::cout<<"buffer node iterator valid stop"<<std::endl;
+      //std::cout<<"buffer node iterator valid stop"<<std::endl;
   }
   return result;
 }
@@ -91,6 +91,7 @@ void BufferNodeIterator::SeekToFirst() {
   }
       
   iterator_->Seek((buffernode_->smallest).Encode()); 
+  assert(iterator_->Valid());
   if(icmp_->Compare(iterator_->key(),buffernode_->smallest.Encode())==0)
       iterator_->Next();
 }

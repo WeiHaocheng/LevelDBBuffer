@@ -302,6 +302,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   //versions_ ->SetSSDCache(ssd_table_cache_);
   //whc add
   Status s = options_.env->NewLogger("/tmp/WLOG", &w_log);
+  versions_->w_log = w_log;
 }
 
 DBImpl::~DBImpl() {
@@ -1377,6 +1378,11 @@ for (int i = 0; i < compact->compaction->num_input_files(1); i++) {
   down_file,
   output_size);
 */
+
+Log(w_log,
+  "level: %d \n",
+  compact->compaction->level()
+  );
   
   mutex_.Lock();
   //stats_[compact->compaction->level() + 1].Add(stats);
@@ -1711,6 +1717,12 @@ Status DBImpl::BufferCompact(CompactionState* compact,int index){
   input_size-compact->compaction->input(0, index)->file_size,
   output_size);
 */
+
+  Log(w_log,
+  "buffer compact level: %d \n",
+  compact->compaction->level()-1
+  );
+
   mutex_.Lock();
   
   if (status.ok()){
