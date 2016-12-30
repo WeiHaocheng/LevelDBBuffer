@@ -1379,10 +1379,10 @@ for (int i = 0; i < compact->compaction->num_input_files(1); i++) {
   output_size);
 */
 
-Log(w_log,
-  "level: %d \n",
-  compact->compaction->level()
-  );
+//Log(w_log,
+  //"level: %d \n",
+  //compact->compaction->level()
+  //);
   
   mutex_.Lock();
   //stats_[compact->compaction->level() + 1].Add(stats);
@@ -1718,10 +1718,10 @@ Status DBImpl::BufferCompact(CompactionState* compact,int index){
   output_size);
 */
 
-  Log(w_log,
-  "buffer compact level: %d \n",
-  compact->compaction->level()-1
-  );
+  //Log(w_log,
+  //"buffer compact level: %d \n",
+  //compact->compaction->level()-1
+  //);
 
   mutex_.Lock();
   

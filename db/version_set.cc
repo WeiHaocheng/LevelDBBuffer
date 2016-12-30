@@ -1473,8 +1473,8 @@ void VersionSet::Finalize(Version* v) {
             static_cast<double>(level_bytes) / MaxBytesForLevel(options_, level);
       else score = -1;
       
-      Log(w_log,"socere:level=%d score=%lf\n",
-        level,score);
+      //Log(w_log,"socere:level=%d score=%lf\n",
+        //level,score);
     }
 
     if (score > best_score) {
