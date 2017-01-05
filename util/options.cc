@@ -27,7 +27,7 @@ Options::Options()
       compression(kNoCompression),
       reuse_logs(false),
       filter_policy(NewBloomFilterPolicy(100)),
-      amplify(4.0),
+      amplify(10.0),
       top_level_size(10.0*1048576.0){
           //std::cout<<"options:filter:"<<filter_policy<<std::endl;
 }

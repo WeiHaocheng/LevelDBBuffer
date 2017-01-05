@@ -148,7 +148,7 @@ class DBImpl : public DB {
 
   //whc add
   //const std::string ssdname_ = "/tmp/vssd";
-  const std::string ssdname_ ;
+  std::string ssdname_ ;
   TableCache* ssd_table_cache_;
   Logger* w_log;
 

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <set>
+#include <string>
 #include "db/dbformat.h"
 #include "db/log_writer.h"
 #include "db/snapshot.h"
@@ -23,6 +24,7 @@ namespace leveldb{
         BufferNode* buffernode_;
         Iterator* iterator_;   //对应sst的iterator
         const InternalKeyComparator* icmp_;
+        std::string kkey;
         
     public:
         BufferNodeIterator(const ReadOptions& options,VersionSet* vset,BufferNode* node);
@@ -30,7 +32,7 @@ namespace leveldb{
         //根据传入的ssd_table_cache打开Table，然后拿到这个table的iter,,具体了流程参考table_cache的newiterator代码
         // ssd_table_cache是为ssd中的文件建立的table_cache
 
-        virtual bool Valid() const ;
+        virtual bool Valid() const;
         //return iter->Valid() && node_->largest >= iter->key()  && node_->smallest <= iter->key()
 
         virtual Slice key() const;

@@ -280,12 +280,18 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       seed_(0),
       tmp_batch_(new WriteBatch),
       bg_compaction_scheduled_(false),
-      manual_compaction_(NULL),
-      ssdname_(dbname) {
-  has_imm_.Release_Store(NULL);
+      manual_compaction_(NULL)
+      //ssdname_() {
+    {
+    has_imm_.Release_Store(NULL);
 
   // Reserve ten files or so for other uses and give the rest to TableCache.
   //whc change
+  if(config::kSSDPath.length()>0)
+      ssdname_ = config::kSSDPath;
+  else ssdname_ = dbname_;
+  
+  
   const int ssd_table_cache_size = 200;
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles - ssd_table_cache_size;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
@@ -303,6 +309,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   //whc add
   Status s = options_.env->NewLogger("/tmp/WLOG", &w_log);
   versions_->w_log = w_log;
+  //VersionSet::Builder::TableCount = 0;
 }
 
 DBImpl::~DBImpl() {
@@ -454,6 +461,53 @@ void DBImpl::DeleteObsoleteFiles() {
       }
     }
   }
+  
+  if(config::kSwitchSSD){
+      std::vector<std::string> ssd_filenames;
+      env_->GetChildren(ssdname_, &ssd_filenames); // Ignoring errors on purpose
+      uint64_t ssd_number;
+      FileType ssd_type;
+      for (size_t i = 0; i < ssd_filenames.size(); i++) {
+        if (ParseFileName(ssd_filenames[i], &ssd_number, &ssd_type)) {
+          bool keep = true;
+          switch (ssd_type) {
+            case kLogFile:
+              keep = ((ssd_number >= versions_->LogNumber()) ||
+                      (ssd_number == versions_->PrevLogNumber()));
+              break;
+            case kDescriptorFile:
+              // Keep my manifest file, and any newer incarnations'
+              // (in case there is a race that allows other incarnations)
+              keep = (ssd_number >= versions_->ManifestFileNumber());
+              break;
+            case kTableFile:
+              keep = (live.find(ssd_number) != live.end());
+              break;
+            case kTempFile:
+              // Any temp files that are currently being written to must
+              // be recorded in pending_outputs_, which is inserted into "live"
+              keep = (live.find(ssd_number) != live.end());
+              break;
+            case kCurrentFile:
+            case kDBLockFile:
+            case kInfoLogFile:
+              keep = true;
+              break;
+          }
+
+          if (!keep) {
+            if (ssd_type == kTableFile) {
+              ssd_table_cache_->Evict(ssd_number);
+            }
+            Log(options_.info_log, "Delete type=%d #%lld\n",
+                int(type),
+                static_cast<unsigned long long>(ssd_number));
+            env_->DeleteFile(ssdname_ + "/" + ssd_filenames[i]);
+          }
+        }
+      }
+  }
+  
 }
 
 Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
@@ -983,18 +1037,36 @@ void DBImpl::BackgroundCompaction() {
    // status = DoCompactionWork(compact);
    //whc change
   //if(compact->compaction->level_== config::kBufferCompactLevel){
-  if(BCJudge::IsBufferCompactLevel(compact->compaction->level_)){
-      //mutex_.Unlock();
-      //CopyToSSD(compact);
-      //mutex_.Lock();
-	  //std::cout<<"Have copied to SSD"<<std::endl;
-	  status = Dispatch(compact);
-  } else status = DoCompactionWork(compact);
+  
+    bool flag = true;
+    if(compact->compaction->level_<=1 || compact->compaction->inputs_[1].size()<12
+    || BCJudge::IsBufferCompactLevel(compact->compaction->level_)){
+      if(BCJudge::IsBufferCompactLevel(compact->compaction->level_)){
+          if(config::kSwitchSSD){
+              mutex_.Unlock();
+              CopyToSSD(compact);
+              mutex_.Lock();
+          }
+          //std::cout<<"Have copied to SSD"<<std::endl;
+          
+          assert(c==compact->compaction);
+          status = Dispatch(compact);
+          flag = false;
+      } else {
+          status = DoCompactionWork(compact);
+      }
+    }
+  
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
-    CleanupCompaction(compact);
-    c->ReleaseInputs();
+    
+    //whc change this two lines's position
+    if(flag){
+        CleanupCompaction(compact);
+        c->ReleaseInputs();
+    }
+    
     DeleteObsoleteFiles();
   }
   delete c;
@@ -1411,6 +1483,9 @@ for (int i = 0; i < compact->compaction->num_input_files(1); i++) {
   VersionSet::LevelSummaryStorage tmp;
   Log(options_.info_log,
       "compacted to: %s", versions_->LevelSummary(&tmp));
+  
+  //CleanupCompaction(compact);
+  //compact->compaction->ReleaseInputs();
   return status;
 }
 
@@ -1423,6 +1498,7 @@ uint64_t DBImpl::GetLevelTotalSize(int level){
 }
 
 Status DBImpl::Dispatch(CompactionState* compact) {
+  std::cout<<"diapatch begin!"<<std::endl;
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
 
@@ -1510,16 +1586,28 @@ Status DBImpl::Dispatch(CompactionState* compact) {
   }
 
   if (status.ok()) {
+    //std::cout<<"dispatch:begin to install result"<<std::endl;
     status = InstallCompactionResults(compact);
+    //std::cout<<"dispatch:end to install result"<<std::endl;
   }
+  
+  //std::cout<<"dispatch:going to clean compact"<<std::endl;
+  compact->compaction->ReleaseInputs();
+  CleanupCompaction(compact);
+  //std::cout<<"dispatch:end to clean compact"<<std::endl;
+  //compact->compaction->ReleaseInputs();
+  //std::cout<<"dispatch:end to releaseinput"<<std::endl;
+  
   
   if(versions_->buffer_compact_switch_ ){
       //std::cout<<"dispatch:going to buffer compact"<<std::endl;
-      Compaction* c;
-      c = versions_->PickCompaction();
-      CompactionState* compact = new CompactionState(c);
-      for(int index = 0;index < compact->compaction->inputs_[0].size();index++){
-          status = BufferCompact(compact,index);
+      //CleanupCompaction(compact);
+      //compact->compaction->ReleaseInputs();
+      Compaction* c2;
+      c2 = versions_->PickCompaction();
+      CompactionState* compact2 = new CompactionState(c2);
+      for(int index = 0;index < compact2->compaction->inputs_[0].size();index++){
+          status = BufferCompact(compact2,index);
           if (!status.ok())
               break;
       }
@@ -1529,11 +1617,15 @@ Status DBImpl::Dispatch(CompactionState* compact) {
           //return status;
       }
       
-      delete compact->outfile;
-      compact->outfile = NULL;
-      status = InstallCompactionResults(compact);
-      c->ReleaseInputs();
-      delete c;
+      delete compact2->outfile;
+      compact2->outfile = NULL;
+      status = InstallCompactionResults(compact2);
+      
+      compact2->compaction->ReleaseInputs();
+      CleanupCompaction(compact2);
+      //compact2->compaction->ReleaseInputs();
+      
+      delete c2;
       //std::cout<<"dispatch:going to buffer compact end"<<std::endl;  
   }
   
@@ -1544,7 +1636,7 @@ Status DBImpl::Dispatch(CompactionState* compact) {
   Log(options_.info_log,
       "dispatch to: %s", versions_->LevelSummary(&tmp));
   
-  std::cout<<"diapatch end!"<<std::endl;
+  //std::cout<<"diapatch end!"<<std::endl;
   //for(int i=0;i<config::kNumLevels;i++)
 		//std::cout<<"level"<<i<<"  nums"<<versions_->current_->NumFiles(i)<<std::endl;
   return status;

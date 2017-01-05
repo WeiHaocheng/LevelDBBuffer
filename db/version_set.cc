@@ -26,6 +26,8 @@
 
 
 namespace leveldb {
+    
+int VersionSet::TableCount = 0;
 
 static int TargetFileSize(const Options* options) {
   return options->max_file_size;
@@ -95,6 +97,15 @@ Version::~Version() {
       if (f->refs <= 0) {
           //whc add
           if(f->buffer != NULL){
+              for(int i=0;i<f->buffer->nodes.size();i++){
+                  uint64_t s = f->buffer->nodes[i].number;
+                  assert(files_in_ssd_[level-1].find(s)!=files_in_ssd_[level-1].end());
+                  files_in_ssd_[level-1][s]->refs--;
+                  //if(files_in_ssd_[level-1][s]->ref==0)
+                      //files_in_ssd_[level-1][s]
+              }
+              
+              
               f->buffer->nodes.clear();
               std::vector<BufferNode>().swap(f->buffer->nodes);
               delete (f->buffer);
@@ -631,12 +642,18 @@ void Version::Ref() {
 }
 
 void Version::Unref() {
+   //std::cout<<"unref in 0"<<std::endl;
   assert(this != &vset_->dummy_versions_);
+  //std::cout<<"unref in 1"<<std::endl;
   assert(refs_ >= 1);
+  //std::cout<<"unref in"<<std::endl;
   --refs_;
+  //std::cout<<"unref 1 sequence="<<sequence_<<std::endl;
+  //std::cout<<"unref 1 refs="<<refs_<<std::endl;
   if (refs_ == 0) {
     delete this;
   }
+  //std::cout<<"unref 2"<<std::endl;
 }
 
 bool Version::OverlapInLevel(int level,
@@ -844,6 +861,7 @@ class VersionSet::Builder {
   LevelState levels_[config::kNumLevels];
 
  public:
+  
   // Initialize a builder with the files from *base and other info from *vset
   Builder(VersionSet* vset, Version* base)
       : vset_(vset),
@@ -874,6 +892,7 @@ class VersionSet::Builder {
         FileMetaData* f = to_unref[i];
         f->refs--;
         if (f->refs <= 0) {
+          assert(f->buffer == NULL);
           delete f;
         }
       }
@@ -982,7 +1001,21 @@ void Apply(VersionEdit* edit) {
             v->endbuffers_[level] = NULL;
     	else 
             v->endbuffers_[level] = base_->endbuffers_[level];
-    	v->files_in_ssd_[level] = base_->files_in_ssd_[level];
+    	
+        //v->files_in_ssd_[level] = base_->files_in_ssd_[level];
+        // delete buffertable if ref==0
+        std::map<uint64_t,BufferTable*>::iterator ptr;
+        //if(level==config::kBufferCompactLevel)
+            //std::cout<<"files_in_ssd_.size[level]()="<<base_->files_in_ssd_[level].size()<<std::endl;
+        for(ptr = base_->files_in_ssd_[level].begin();ptr!=base_->files_in_ssd_[level].end();ptr++){
+            if(ptr->second->refs > 0)
+                v->files_in_ssd_[level].insert(*ptr);
+            else{
+                delete(ptr->second);
+                //VersionSet::TableCount--;
+                //std::cout<<"saveto TableCount="<<VersionSet::TableCount<<std::endl;
+            }
+        }
 
     const std::vector<FileMetaData*>& base_files = base_->files_[level];
       std::vector<FileMetaData*>::const_iterator base_iter = base_files.begin();
@@ -1038,6 +1071,8 @@ void Apply(VersionEdit* edit) {
     		 BufferTable* newbuffertable = new BufferTable(s);
     		 newbuffertable->refs++;
     		 v->files_in_ssd_[level-1].insert(std::make_pair(s,newbuffertable));
+             //VersionSet::TableCount++;
+             //std::cout<<"saveto TableCount="<<VersionSet::TableCount<<std::endl;
     	 }else{
     		 v->files_in_ssd_[level-1][s]->refs++;
     	 }
@@ -1572,10 +1607,13 @@ uint64_t VersionSet::ApproximateOffsetOf(Version* v, const InternalKey& ikey) {
 
 
 void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
-  for (Version* v = dummy_versions_.next_;
+  //whc add
+  int count = 0;
+    for (Version* v = dummy_versions_.next_;
        v != &dummy_versions_;
        v = v->next_) {
-    for (int level = 0; level < config::kNumLevels; level++) {
+    count++;
+      for (int level = 0; level < config::kNumLevels; level++) {
       const std::vector<FileMetaData*>& files = v->files_[level];
       for (size_t i = 0; i < files.size(); i++) {
         live->insert(files[i]->number);
@@ -1583,14 +1621,15 @@ void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
       
       //whc add
       // when no ssd
-      for(int level = 0; level < config::kNumLevels; level++){
-          std::map<uint64_t,BufferTable*>::iterator ptr = v->files_in_ssd_[level].begin();
-          for(;ptr!= v->files_in_ssd_[level].end();ptr++){
-              live->insert((*ptr).first);
-          }
-      }
+      
+        std::map<uint64_t,BufferTable*>::iterator ptr = v->files_in_ssd_[level].begin();
+        for(;ptr!= v->files_in_ssd_[level].end();ptr++){
+            live->insert((*ptr).first);
+        }
+      
     }
   }
+  //std::cout<<"addlivefiles:count="<<count<<std::endl;
 }
 
 int64_t VersionSet::NumLevelBytes(int level) const {
@@ -1634,10 +1673,14 @@ void VersionSet::GetRange(const std::vector<FileMetaData*>& inputs,
         for(int i=0;i<f->buffer->nodes.size();i++){
             BufferNodeIterator* ptr = new BufferNodeIterator(options,this,&(f->buffer->nodes[i]));
             InternalKey nodesmallest;
+            if(!ptr->Valid()){
+                delete ptr;
+                continue;
+            }
             nodesmallest.DecodeFrom(ptr->key());
             if(icmp_.Compare(f->smallest, nodesmallest) > 0)
                 f->smallest = nodesmallest;
-            delete(ptr);
+            delete ptr;
         }
     }
     
@@ -1777,7 +1820,7 @@ Compaction* VersionSet::PickCompaction() {
   //whc add
   if(buffer_compact_switch_){
       level = current_->bc_compaction_level_;
-      std::cout<<"pickcompaction:bc compaction level is: "<<current_->bc_compaction_level_<<std::endl;
+      //std::cout<<"pickcompaction:bc compaction level is: "<<current_->bc_compaction_level_<<std::endl;
       c = new Compaction(options_, level);
       c->inputs_[0] = current_->need_compact_[level];
       //std::cout<<"pickcompaction:bc compaction input num "<<c->inputs_[0].size()<<std::endl;
@@ -1785,6 +1828,7 @@ Compaction* VersionSet::PickCompaction() {
       //std::cout<<"pickcompaction:bc compaction input[0][0].l= "<<c->inputs_[0][0]->largest.Rep()<<std::endl;
       c->input_version_ = current_;
       c->input_version_->Ref();
+      //std::cout<<"pickcompaction:current_->sequence_= "<<current_->sequence_<<std::endl;
       if(current_->endbuffers_need_[level]){
           c->endbuffer = current_->endbuffers_[level];
           current_->endbuffers_clean_[level] = true;
@@ -1844,6 +1888,7 @@ Compaction* VersionSet::PickCompaction() {
 
   c->input_version_ = current_;
   c->input_version_->Ref();
+  //std::cout<<"pickcompaction:current_->sequence_= "<<current_->sequence_<<std::endl;
 
   // Files in level 0 may overlap each other, so pick up all overlapping ones
   if (level == 0) {
@@ -2103,8 +2148,11 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
 }
 
 void Compaction::ReleaseInputs() {
-  if (input_version_ != NULL) {
-    input_version_->Unref();
+  //std::cout<<"release in"<<std::endl;
+    if (input_version_ != NULL) {
+    //std::cout<<"release:1"<<std::endl;
+      input_version_->Unref();
+    //std::cout<<"release:2"<<std::endl;
     input_version_ = NULL;
   }
 }

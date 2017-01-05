@@ -62,7 +62,7 @@ static const char* FLAGS_benchmarks =
     ;
 
 // Number of key/values to place in database
-static int FLAGS_num = 10000000;
+static int FLAGS_num = 1000000;
 
 // Number of read operations to do.  If negative, do FLAGS_num reads.
 static int FLAGS_reads = -1;
@@ -97,7 +97,7 @@ static int FLAGS_block_size = 0;
 static int FLAGS_cache_size = -1;
 
 // Maximum number of files to keep open at the same time (use default if == 0)
-static int FLAGS_open_files = 0;
+static int FLAGS_open_files = 1000;
 
 // Bloom filter bits per key.
 // Negative means use default settings.

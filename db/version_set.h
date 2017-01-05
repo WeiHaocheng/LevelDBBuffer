@@ -22,6 +22,7 @@
 #include "db/version_edit.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+#include "db/db_impl.h"
 
 namespace leveldb {
 
@@ -215,6 +216,9 @@ class VersionSet {
 			   TableCache* ssd_table_cache);
 
   ~VersionSet();
+  
+  //whc add
+  static int TableCount;
 
   // Apply *edit to the current version to form a new descriptor that
   // is both saved to persistent state and installed as the new
@@ -353,6 +357,7 @@ class VersionSet {
   friend class Version;
   //whc add
   friend class BufferNodeIterator;
+  friend class DBImpl;
 
   bool ReuseManifest(const std::string& dscname, const std::string& dscbase);
 

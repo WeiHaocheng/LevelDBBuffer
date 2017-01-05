@@ -26,12 +26,14 @@ bool BufferNodeIterator::Valid() const {
     //std::cout<<"buffer node iterator valid node number"<<buffernode_->number<<std::endl;
     //std::cout<<"buffer node iterator valid smallest:"<<buffernode_->smallest.Rep()<<std::endl;
     if (!iterator_->Valid()){
-      std::cout<<"buffer node iterator not valid"<<std::endl;
+      //std::cout<<"buffer node iterator not valid"<<std::endl;
       return false; 
   } 
   
   //std::cout<<"buffer node iterator valid"<<std::endl;     
   Slice k = iterator_->key();
+
+  
   bool result;
   result = (buffernode_->smallest.Rep().size()==0 
   || icmp_->Compare(k,buffernode_->smallest.Encode()) > 0 )
@@ -94,6 +96,7 @@ void BufferNodeIterator::SeekToFirst() {
   assert(iterator_->Valid());
   if(icmp_->Compare(iterator_->key(),buffernode_->smallest.Encode())==0)
       iterator_->Next();
+  kkey = iterator_->key().ToString();
 }
   
 void BufferNodeIterator::SeekToLast() {
@@ -106,20 +109,26 @@ Slice BufferNodeIterator::value() const {
 }
 
 BufferNodeIterator::~BufferNodeIterator(){
-  delete iterator_;
+    //std::cout<<"buffer node iterator release"<<std::endl;
+    delete iterator_;
 }
 
 Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer){
     
-     std::vector<Iterator*> list;
+     int space = buffer->nodes.size();
+     Iterator** list = new Iterator*[space];
      assert(buffer!=NULL);
      //std::cout<<"buffer iterator build"<<std::endl;
      for(int i=0;i<buffer->nodes.size();i++){
      	 BufferNodeIterator* ptr = new BufferNodeIterator(options,vset,&(buffer->nodes[i]));
-     	 list.push_back(ptr);
+     	 //list.push_back(ptr);
+         list[i] = ptr;
      }
      Iterator* buffer_iter =
-      NewMergingIterator(&(vset->icmp_), &list[0], list.size());
+      NewMergingIterator(&(vset->icmp_), list, space);
+      
+      delete[] list;
+      
       return buffer_iter;
     }
 
