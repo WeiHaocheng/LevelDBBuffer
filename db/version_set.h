@@ -336,6 +336,7 @@ class VersionSet {
   //whc add
    const std::string ssdname_;
    TableCache*  ssd_table_cache_;
+   TableCache* const table_cache_;
    //void SetSSDCache(TableCache* t){ssd_table_cache_ =  t;}
 
    Version* current_;        // == dummy_versions_.prev_
@@ -382,7 +383,7 @@ class VersionSet {
   Env* const env_;
   const std::string dbname_;
   const Options* const options_;
-  TableCache* const table_cache_;
+  //TableCache* const table_cache_;
   //const InternalKeyComparator icmp_;
   uint64_t next_file_number_;
   uint64_t manifest_file_number_;

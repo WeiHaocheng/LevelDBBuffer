@@ -229,9 +229,15 @@ class Version::LevelFileNumIterator : public Iterator {
   }
   Slice value() const {
     assert(Valid());
-    EncodeFixed64(value_buf_, (*flist_)[index_]->number);
-    EncodeFixed64(value_buf_+8, (*flist_)[index_]->file_size);
-    return Slice(value_buf_, sizeof(value_buf_));
+    //EncodeFixed64(value_buf_, (*flist_)[index_]->number);
+    //EncodeFixed64(value_buf_+8, (*flist_)[index_]->file_size);
+    //return Slice(value_buf_, sizeof(value_buf_));
+    
+    //whc add
+    //assert(1==2);
+    FileMetaData* f = (*flist_)[index_];
+    memcpy(value_buf_,&f,sizeof(FileMetaData*));
+    return Slice(value_buf_,sizeof(FileMetaData*));
   }
   virtual Status status() const { return Status::OK(); }
  private:
@@ -241,9 +247,10 @@ class Version::LevelFileNumIterator : public Iterator {
 
   // Backing store for value().  Holds the file number and size.
   mutable char value_buf_[16];
+  //mutable char value_buf_[32];
 };
 
-static Iterator* GetFileIterator(void* arg,
+static Iterator* GetFileIterator2(void* arg,
                                  const ReadOptions& options,
                                  const Slice& file_value) {
   TableCache* cache = reinterpret_cast<TableCache*>(arg);
@@ -257,11 +264,32 @@ static Iterator* GetFileIterator(void* arg,
   }
 }
 
+static Iterator* GetFileIterator(void* arg,
+                                 const ReadOptions& options,
+                                 const Slice& file_value) {
+  //TableCache* cache = reinterpret_cast<TableCache*>(arg);
+  VersionSet* vset = reinterpret_cast<VersionSet*>(arg);
+  TableCache* cache = vset->table_cache_;
+  if (file_value.size() != sizeof(FileMetaData*)) {
+    return NewErrorIterator(
+        Status::Corruption("FileReader invoked with unexpected value"));
+  } else {
+      void* arg2;
+      memcpy(&arg2,file_value.data(),file_value.size());
+      FileMetaData* f = reinterpret_cast<FileMetaData*>(arg2);
+      //std::cout<<"f->number="<<f->number<<"f->file_size= "<<f->file_size<<std::endl;
+      return vset->MakeBufferInputIterator(f);
+      //return cache->NewIterator(options,
+                              //f->number,
+                              //f->file_size);
+  }
+}
+
 Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
                                             int level) const {
   return NewTwoLevelIterator(
       new LevelFileNumIterator(vset_->icmp_, &files_[level]),
-      &GetFileIterator, vset_->table_cache_, options);
+      &GetFileIterator, vset_, options);
 }
 
 void Version::AddIterators(const ReadOptions& options,
@@ -1759,7 +1787,7 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
         
         list[num++] = NewTwoLevelIterator(
             new Version::LevelFileNumIterator(icmp_, &c->inputs_[which]),
-            &GetFileIterator, table_cache_, options);
+            &GetFileIterator, this, options);
       }
     }
   }
@@ -1779,11 +1807,18 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
 
 //whc add
 Iterator* VersionSet::MakeBufferInputIterator(FileMetaData* f) {
-    assert(f->buffer != NULL);
-    assert(f->buffer->nodes.size()>0);
     ReadOptions options;
     options.verify_checksums = options_->paranoid_checks;
     options.fill_cache = false;
+    
+    if(f->buffer==NULL)
+        return table_cache_->NewIterator(
+              options, f->number, f->file_size);
+    
+    
+    
+    assert(f->buffer != NULL);
+    assert(f->buffer->nodes.size()>0);
 
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.

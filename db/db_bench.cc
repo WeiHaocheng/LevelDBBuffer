@@ -48,7 +48,7 @@ static const char* FLAGS_benchmarks =
     //"overwrite,"
     //"readrandom,"
     "readrandom,"  // Extra run to allow previous compactions to quiesce
-    //"readseq,"
+    "readseq,"
     //"readreverse,"
     //"compact,"
     //"readrandom,"
@@ -62,7 +62,7 @@ static const char* FLAGS_benchmarks =
     ;
 
 // Number of key/values to place in database
-static int FLAGS_num = 1000000;
+static int FLAGS_num = 10000000;
 
 // Number of read operations to do.  If negative, do FLAGS_num reads.
 static int FLAGS_reads = -1;
@@ -780,6 +780,7 @@ class Benchmark {
       thread->stats.FinishedSingleOp();
       ++i;
     }
+    printf("readsequential:i=%d\n",i);
     delete iter;
     thread->stats.AddBytes(bytes);
   }

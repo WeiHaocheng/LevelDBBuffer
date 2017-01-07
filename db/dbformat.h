@@ -46,13 +46,13 @@ static const int kReadBytesPeriod = 1048576;
 static const int kBufferCompactLevel  = 1;
 
 //whc add
-static const int kThresholdBufferNum  = 3;
+static const int kThresholdBufferNum  = 5;
 
 //whc add
-static const bool kSwitchSSD = true;
+static const bool kSwitchSSD = false;
 
 //whc add
-static const std::string kSSDPath = "/tmp/vssd";
+static const std::string kSSDPath = "";
 
 
 }  // namespace config
