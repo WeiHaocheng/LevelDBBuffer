@@ -100,6 +100,8 @@ Version::~Version() {
               for(int i=0;i<f->buffer->nodes.size();i++){
                   uint64_t s = f->buffer->nodes[i].number;
                   assert(files_in_ssd_[level-1].find(s)!=files_in_ssd_[level-1].end());
+                  if(files_in_ssd_[level-1].find(s)==files_in_ssd_[level-1].end())
+                      continue;
                   files_in_ssd_[level-1][s]->refs--;
                   //if(files_in_ssd_[level-1][s]->ref==0)
                       //files_in_ssd_[level-1][s]

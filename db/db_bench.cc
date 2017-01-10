@@ -47,8 +47,8 @@ static const char* FLAGS_benchmarks =
     "fillrandom,"
     //"overwrite,"
     //"readrandom,"
-    "readrandom,"  // Extra run to allow previous compactions to quiesce
-    "readseq,"
+    //"readrandom,"  // Extra run to allow previous compactions to quiesce
+    //"readseq,"
     //"readreverse,"
     //"compact,"
     //"readrandom,"
@@ -71,7 +71,7 @@ static int FLAGS_reads = -1;
 static int FLAGS_threads = 1;
 
 // Size of each value
-static int FLAGS_value_size = 100;
+static int FLAGS_value_size = 1000;
 
 // Arrange to generate values that shrink to this fraction of
 // their original size after compression
