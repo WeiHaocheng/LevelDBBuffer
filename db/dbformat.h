@@ -43,7 +43,7 @@ static const int kMaxMemCompactLevel = 0;
 static const int kReadBytesPeriod = 1048576;
 
 //whc add
-static const int kBufferCompactLevel  = 10;
+static const int kBufferCompactLevel  = 1;
 
 //whc add
 static const int kThresholdBufferNum  = 5;
@@ -63,9 +63,27 @@ class BCJudge{
     public:
     static bool IsBufferCompactLevel(int level){
         //return (level >= config::kBufferCompactLevel);
-        return (level==config::kBufferCompactLevel);
+        return (level>=config::kBufferCompactLevel);
     }
 };
+
+//whc add
+class ReadStatic{
+  public:
+    static int mem_get;
+    static int level_get[7];
+    static int table_get;
+    static int table_bloomfilter_miss;
+    static int table_readfile_miss;
+    static int table_cache_shoot;
+    //static int level1_get;
+    //static int level2_get;
+    //static int level3_get;
+    //static int level4_get;
+    //static int level5_get;
+};
+
+//int ReadStatic::mem_get = 0;
 
 
 

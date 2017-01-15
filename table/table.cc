@@ -15,6 +15,7 @@
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include <iostream>
+#include "db/dbformat.h"
 
 namespace leveldb {
 
@@ -237,6 +238,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
     BlockHandle handle;
     
     //whc add
+    ReadStatic::table_get++;
     //if(filter==NULL)
         //std::cout<<"table get no filter"<<std::endl;
     
@@ -245,13 +247,15 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
       //std::cout<<"table get filter not found"<<std::endl;
+      ReadStatic::table_bloomfilter_miss++;
     } else {
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);
       if (block_iter->Valid()) {
         (*saver)(arg, block_iter->key(), block_iter->value());
       }else{
-          std::cout<<"table get not found"<<std::endl;
+          //std::cout<<"table get not found"<<std::endl;
+          ReadStatic::table_readfile_miss++;
       }
       s = block_iter->status();
       delete block_iter;

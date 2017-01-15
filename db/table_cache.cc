@@ -50,8 +50,13 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
   char buf[sizeof(file_number)];
   EncodeFixed64(buf, file_number);
   Slice key(buf, sizeof(buf));
+  //whc add
+  ReadStatic::table_cache_shoot++;
+  
   *handle = cache_->Lookup(key);
   if (*handle == NULL) {
+    //whc add
+    ReadStatic::table_cache_shoot--;
     std::string fname = TableFileName(dbname_, file_number);
     //std::cout<<"table cache findtable file name"<<fname<<std::endl;
     RandomAccessFile* file = NULL;

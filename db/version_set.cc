@@ -579,6 +579,7 @@ Status Version::BufferGet(const ReadOptions& options,
                 case kNotFound:
                     continue;      // Keep searching in other files
                 case kFound:
+                    ReadStatic::level_get[level]++;
                     return s;
                 case kDeleted:
                     s = Status::NotFound(Slice());  // Use empty error message for speed
@@ -598,10 +599,13 @@ Status Version::BufferGet(const ReadOptions& options,
       if (!s.ok()) {
         return s;
       }
+      
+    
       switch (saver.state) {
         case kNotFound:
           break;      // Keep searching in other files
         case kFound:
+          ReadStatic::level_get[level]++;
           return s;
         case kDeleted:
           s = Status::NotFound(Slice());  // Use empty error message for speed
@@ -619,7 +623,7 @@ Status Version::BufferGet(const ReadOptions& options,
 bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != NULL) {
-    f->allowed_seeks--;
+    //f->allowed_seeks--;
     if (f->allowed_seeks <= 0 && file_to_compact_ == NULL) {
       file_to_compact_ = f;
       file_to_compact_level_ = stats.seek_file_level;
@@ -1504,7 +1508,7 @@ void VersionSet::Finalize(Version* v) {
   
   if(buffer_compact_switch_==true){
       v->compaction_level_ = v->bc_compaction_level_;
-      std::cout<<"finalize going to buffer compact"<<std::endl;
+      //std::cout<<"finalize going to buffer compact"<<std::endl;
       return;
   }
    

@@ -316,6 +316,16 @@ DBImpl::~DBImpl() {
   // whc add
 	for(int i=0;i<config::kNumLevels;i++)
 		std::cout<<"level"<<i<<"  nums"<<versions_->current_->NumFiles(i)<<std::endl;
+        
+    std::cout<<"mem getnum:"<<ReadStatic::mem_get<<std::endl;
+    for(int i=0;i<config::kNumLevels;i++)
+		std::cout<<"level"<<i<<" getnum:"<<ReadStatic::level_get[i]<<std::endl;
+        
+    std::cout<<"table get "<<ReadStatic::table_get<<std::endl;
+    std::cout<<"bloomfilter miss "<<ReadStatic::table_bloomfilter_miss<<std::endl;
+    std::cout<<"readfile miss "<<ReadStatic::table_readfile_miss<<std::endl;
+    std::cout<<"table cache shoot "<<ReadStatic::table_cache_shoot<<std::endl;
+    
 
 
 	// Wait for background work to finish
@@ -1498,7 +1508,7 @@ uint64_t DBImpl::GetLevelTotalSize(int level){
 }
 
 Status DBImpl::Dispatch(CompactionState* compact) {
-  std::cout<<"diapatch begin!"<<std::endl;
+  //std::cout<<"diapatch begin!"<<std::endl;
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
 
@@ -1923,8 +1933,12 @@ Status DBImpl::Get(const ReadOptions& options,
     LookupKey lkey(key, snapshot);
     if (mem->Get(lkey, value, &s)) {
       // Done
+      //whc add
+      ReadStatic::mem_get++;
     } else if (imm != NULL && imm->Get(lkey, value, &s)) {
       // Done
+      //whc add
+      ReadStatic::mem_get++;
     } else {
       //s = current->Get(options, lkey, value, &stats);
       // whc change

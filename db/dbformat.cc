@@ -9,6 +9,21 @@
 
 namespace leveldb {
 
+//whc add
+int ReadStatic::mem_get = 0;
+/*
+int ReadStatic::level_get[0] = 0;
+int ReadStatic::level_get[1] = 0;
+int ReadStatic::level_get[2] = 0;
+int ReadStatic::level_get[3] = 0;
+int ReadStatic::level_get[4] = 0;
+*/
+int ReadStatic::level_get[] = {0}; 
+int ReadStatic::table_get = 0;
+int ReadStatic::table_bloomfilter_miss = 0;
+int ReadStatic::table_readfile_miss = 0;
+int ReadStatic::table_cache_shoot = 0;
+    
 static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);
   assert(t <= kValueTypeForSeek);
