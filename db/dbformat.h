@@ -45,6 +45,9 @@ static const int kReadBytesPeriod = 1048576;
 //whc add
 static const int kBufferCompactLevel  = 1;
 
+//
+static const int kBufferComactMaxLevel = 1;
+
 //whc add
 static const int kThresholdBufferNum  = 5;
 
@@ -62,8 +65,10 @@ static const std::string kSSDPath = "";
 class BCJudge{
     public:
     static bool IsBufferCompactLevel(int level){
-        //return (level >= config::kBufferCompactLevel);
-        return (level>=config::kBufferCompactLevel);
+        return (level >= config::kBufferCompactLevel && level<=config::kBufferComactMaxLevel);
+        //return (level>=config::kBufferCompactLevel);
+        //return (level==1);
+        //return false;
     }
 };
 

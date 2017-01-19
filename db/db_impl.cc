@@ -166,9 +166,11 @@ void DBImpl::CompactionStats::UpdateWhileCompact(const CompactionState* compact,
                                                  OneTimeCompactionStats& hl_stats) {
   // Only update read stats for low-level
   ll_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
+  
   for (int i = 0; i < compact->compaction->num_input_files(0); i++) {
-    ll_stats.partial_stats.bytes_read += compact->compaction->input(0, i)->file_size;
+    hl_stats.partial_stats.bytes_read += compact->compaction->input(0, i)->file_size;
   }
+  
   // High-level
   hl_stats.partial_stats.micros = micros;
 
@@ -200,13 +202,14 @@ void DBImpl::CompactionStats::UpdateWhileBufferCompact(const CompactionState* co
   // Only update read stats for low-level
   //hl_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
   hl_stats.partial_stats.read_file_nums = compact->compaction->num_input_files(0);
+  /*
   for (int i = 0; i < compact->compaction->num_input_files(0); i++) {
     hl_stats.partial_stats.bytes_read += compact->compaction->input(0, i)->file_size;
   }
-  
+  */
   // low-level(buffer total size)
   ll_stats.partial_stats.read_file_nums = 0;
-  ll_stats.partial_stats.bytes_read += inputsize - hl_stats.partial_stats.bytes_read;
+  //ll_stats.partial_stats.bytes_read += inputsize - hl_stats.partial_stats.bytes_read;
   
   // High-level
   hl_stats.partial_stats.micros = micros;
@@ -214,6 +217,7 @@ void DBImpl::CompactionStats::UpdateWhileBufferCompact(const CompactionState* co
 
   hl_stats.partial_stats.write_file_nums = compact->outputs.size();
   hl_stats.partial_stats.bytes_written += outputsize;
+  hl_stats.partial_stats.bytes_read += inputsize;
   //std::cout<<"level write:"<<hl_stats.partial_stats.bytes_written<<std::endl;
 
   hl_stats.partial_stats.compact_times++;
@@ -292,8 +296,8 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   else ssdname_ = dbname_;
   
   
-  const int ssd_table_cache_size = 200;
-  const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles - ssd_table_cache_size;
+  const int ssd_table_cache_size = 2500;
+  const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles - ssd_table_cache_size - 10;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
 
   //whc add
