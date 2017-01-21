@@ -99,7 +99,7 @@ Version::~Version() {
           if(f->buffer != NULL){
               for(int i=0;i<f->buffer->nodes.size();i++){
                   uint64_t s = f->buffer->nodes[i].number;
-                  assert(files_in_ssd_[level-1].find(s)!=files_in_ssd_[level-1].end());
+                  //assert(files_in_ssd_[level-1].find(s)!=files_in_ssd_[level-1].end());
                   if(files_in_ssd_[level-1].find(s)==files_in_ssd_[level-1].end())
                       continue;
                   files_in_ssd_[level-1][s]->refs--;
@@ -280,7 +280,7 @@ static Iterator* GetFileIterator(void* arg,
       memcpy(&arg2,file_value.data(),file_value.size());
       FileMetaData* f = reinterpret_cast<FileMetaData*>(arg2);
       //std::cout<<"f->number="<<f->number<<"f->file_size= "<<f->file_size<<std::endl;
-      return vset->MakeBufferInputIterator(f);
+      return vset->MakeBufferInputIterator(f,vset->iterator_sequence_);
       //return cache->NewIterator(options,
                               //f->number,
                               //f->file_size);
@@ -296,7 +296,8 @@ Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
 
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
-  // Merge all level zero files together since they may overlap
+   std::cout<<"version::additerators:sequence="<<sequence_<<std::endl;
+   // Merge all level zero files together since they may overlap
   for (size_t i = 0; i < files_[0].size(); i++) {
     iters->push_back(
         vset_->table_cache_->NewIterator(
@@ -944,6 +945,7 @@ class VersionSet::Builder {
 		  (*buffer) =new  Buffer();
 		  (*buffer)->smallest = be.smallest;
 		  (*buffer)->largest = be.largest;
+          (*buffer)->nodes.reserve(config::kThresholdBufferNum+5);
 		  (*buffer)->nodes.push_back(newnode);
 		  (*buffer)->size=be.size;
 	  }else{
@@ -1787,7 +1789,8 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
         
         for(int i=0;i<c->inputs_[which].size();i++){
             if(c->inputs_[which][i]->buffer!=NULL)
-                list[num++] = NewBufferIterator(options,this,c->inputs_[which][i]->buffer);
+                list[num++] = NewBufferIterator(options,this,c->inputs_[which][i]->buffer,
+                current()->sequence_);
         }
             
         
@@ -1798,8 +1801,8 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
     }
   }
   
-  if(c->endbuffer!=NULL)
-            list[num++] = NewBufferIterator(options,this,c->endbuffer);
+  //if(c->endbuffer!=NULL)
+            //list[num++] = NewBufferIterator(options,this,c->endbuffer);
             
     //std::cout<<"input[0].size="<<c->inputs_[0].size()<<std::endl;
     //std::cout<<"num="<<num<<std::endl;
@@ -1812,7 +1815,7 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
 }
 
 //whc add
-Iterator* VersionSet::MakeBufferInputIterator(FileMetaData* f) {
+Iterator* VersionSet::MakeBufferInputIterator(FileMetaData* f,uint64_t sequence) {
     ReadOptions options;
     options.verify_checksums = options_->paranoid_checks;
     options.fill_cache = false;
@@ -1840,7 +1843,8 @@ Iterator* VersionSet::MakeBufferInputIterator(FileMetaData* f) {
  //whc change
   
   
-      list[num++] = NewBufferIterator(options,this,f->buffer);
+     iterator_sequence_ = current()->sequence_;
+     list[num++] = NewBufferIterator(options,this,f->buffer,sequence);
   
   
      list[num++] = table_cache_->NewIterator(

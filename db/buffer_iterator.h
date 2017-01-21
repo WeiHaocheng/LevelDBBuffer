@@ -41,7 +41,7 @@ namespace leveldb{
         virtual Slice value() const;
         //同上
 
-        virtual Status status() const ;
+        virtual Status status()  const;
 
         virtual void Next();
        // 如果还在buffernode的范围内，将指针右移
@@ -69,6 +69,6 @@ namespace leveldb{
        //delete iter
     };
 
-    extern Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer);
+    extern Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer,uint64_t sequence);
 }
 #endif

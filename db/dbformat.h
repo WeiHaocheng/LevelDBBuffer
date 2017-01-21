@@ -46,7 +46,7 @@ static const int kReadBytesPeriod = 1048576;
 static const int kBufferCompactLevel  = 1;
 
 //
-static const int kBufferComactMaxLevel = 1;
+static const int kBufferComactMaxLevel = 2;
 
 //whc add
 static const int kThresholdBufferNum  = 5;

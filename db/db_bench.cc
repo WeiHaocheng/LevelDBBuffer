@@ -48,7 +48,7 @@ static const char* FLAGS_benchmarks =
     //"overwrite,"
     "readrandom,"
     //"readrandom,"  // Extra run to allow previous compactions to quiesce
-    //"readseq,"
+    "readseq,"
     //"readreverse,"
     //"compact,"
     //"readrandom,"
@@ -71,7 +71,7 @@ static int FLAGS_reads = -1;
 static int FLAGS_threads = 1;
 
 // Size of each value
-static int FLAGS_value_size = 1000;
+static int FLAGS_value_size = 100;
 
 // Arrange to generate values that shrink to this fraction of
 // their original size after compression
@@ -802,15 +802,19 @@ class Benchmark {
     ReadOptions options;
     std::string value;
     int found = 0;
+    //Iterator* iter = db_->NewIterator(ReadOptions());
     for (int i = 0; i < reads_; i++) {
       char key[100];
       const int k = thread->rand.Next() % FLAGS_num;
       snprintf(key, sizeof(key), "%016d", k);
       if (db_->Get(options, key, &value).ok()) {
-        found++;
+      //iter->Seek(key);
+      found++;
       }
       thread->stats.FinishedSingleOp();
     }
+    
+    //delete iter;
     char msg[100];
     snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
     thread->stats.AddMessage(msg);

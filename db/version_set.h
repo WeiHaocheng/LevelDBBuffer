@@ -272,7 +272,7 @@ class VersionSet {
     }
 
     uint64_t LastVersionSequence() const { return last_version_sequence_; }
-
+    uint64_t iterator_sequence_;
 
   // Mark the specified file number as used.
   void MarkFileNumberUsed(uint64_t number);
@@ -308,7 +308,7 @@ class VersionSet {
   Iterator* MakeInputIterator(Compaction* c);
 
   //whc add
-  Iterator* MakeBufferInputIterator(FileMetaData* c);
+  Iterator* MakeBufferInputIterator(FileMetaData* c,uint64_t sequence);
 
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {

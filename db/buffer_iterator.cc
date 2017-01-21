@@ -17,12 +17,14 @@ BufferNodeIterator::BufferNodeIterator(const ReadOptions& options,VersionSet* vs
         //std::cout<<"node->smallest="<<node->smallest.Rep()<<std::endl;
       //else
          //::cout<<"node->smallest=0"<<std::endl;
+      //assert(buffernode_->smallest.Rep().size()0);
+      assert(buffernode_->largest.Rep().size()!=0);
       SeekToFirst();
       }
   
 
 
-bool BufferNodeIterator::Valid() const {
+bool BufferNodeIterator::Valid()  const{
     //std::cout<<"buffer node iterator valid node number"<<buffernode_->number<<std::endl;
     //std::cout<<"buffer node iterator valid smallest:"<<buffernode_->smallest.Rep()<<std::endl;
     if (!iterator_->Valid()){
@@ -46,7 +48,7 @@ bool BufferNodeIterator::Valid() const {
   return result;
 }
 
-Slice BufferNodeIterator::key() const {
+Slice BufferNodeIterator::key()  const{
   assert(Valid());
   return iterator_->key();
 }
@@ -104,7 +106,7 @@ void BufferNodeIterator::SeekToLast() {
 }
 
 
-Slice BufferNodeIterator::value() const {
+Slice BufferNodeIterator::value()  const{
   return iterator_->value();
 }
 
@@ -113,19 +115,24 @@ BufferNodeIterator::~BufferNodeIterator(){
     delete iterator_;
 }
 
-Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer){
+Iterator* NewBufferIterator(const ReadOptions& options,VersionSet* vset,Buffer* buffer,uint64_t sequence){
     
      int space = buffer->nodes.size();
      Iterator** list = new Iterator*[space];
      assert(buffer!=NULL);
      //std::cout<<"buffer iterator build"<<std::endl;
-     for(int i=0;i<buffer->nodes.size();i++){
-     	 BufferNodeIterator* ptr = new BufferNodeIterator(options,vset,&(buffer->nodes[i]));
+     int num = 0;
+     for(int i=buffer->nodes.size()-1;i>=0;i--){
+     	 if(buffer->nodes[i].sequence > sequence){
+             //std::cout<<"new buffer iterator error"<<std::endl;
+             continue;
+         }
+         BufferNodeIterator* ptr = new BufferNodeIterator(options,vset,&(buffer->nodes[i]));
      	 //list.push_back(ptr);
-         list[i] = ptr;
+         list[num++] = ptr;
      }
      Iterator* buffer_iter =
-      NewMergingIterator(&(vset->icmp_), list, space);
+      NewMergingIterator(&(vset->icmp_), list, num);
       
       delete[] list;
       

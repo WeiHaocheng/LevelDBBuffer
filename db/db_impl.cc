@@ -1558,18 +1558,24 @@ Status DBImpl::Dispatch(CompactionState* compact) {
           
           InternalKey nlargest;
           
+          int tag = 0;
+          
           if(ptr1>=compact->compaction->inputs_[1].size()){
               nlargest.DecodeFrom(compact->compaction->inputs_[0][i]->largest.Encode());
-          }
-          else if(internal_comparator_.Compare(compact->compaction->inputs_[0][i]->largest,
-                compact->compaction->inputs_[1][ptr1]->largest)>0)
+              tag = 1;
+          }else if(internal_comparator_.Compare(compact->compaction->inputs_[0][i]->largest,
+                compact->compaction->inputs_[1][ptr1]->largest)>0){
               nlargest.DecodeFrom(compact->compaction->inputs_[1][ptr1]->largest.Encode());
-          else
+              //std::cout<<"diapatch1:"<<nlargest.Rep()<<std::endl;
+              tag = 2;
+            }else{
               nlargest.DecodeFrom(compact->compaction->inputs_[0][i]->largest.Encode());
-          
+              tag = 3;
+            }
           
           if(ptr1<compact->compaction->inputs_[1].size()){
               
+              assert(nlargest.Rep().size()>0);
               compact->compaction->edit_.AddBufferNode(compact->compaction->level_+1,
     						compact->compaction->inputs_[0][i]->number,
                             compact->compaction->inputs_[0][i]->file_size,
@@ -1585,6 +1591,7 @@ Status DBImpl::Dispatch(CompactionState* compact) {
               ptr0_key.assign(compact->compaction->inputs_[1][ptr1]->largest.Rep());
               ptr1++;
           }else{
+              assert(nlargest.Rep().size()>0);
               compact->compaction->edit_.AddBufferNode(compact->compaction->level_+1,
     						compact->compaction->inputs_[0][i]->number,
                             compact->compaction->inputs_[0][i]->file_size,
@@ -1676,7 +1683,8 @@ Status DBImpl::BufferCompact(CompactionState* compact,int index){
     
     mutex_.Unlock();
 
-  Iterator* input = versions_->MakeBufferInputIterator(compact->compaction->inputs_[0][index]);
+  Iterator* input = versions_->MakeBufferInputIterator(compact->compaction->inputs_[0][index],
+    versions_->current()->sequence_);
   //std::cout<<"buffer compact end make iterator"<<std::endl;
   //return status;
   input->SeekToFirst();
@@ -1885,6 +1893,9 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
   Iterator* internal_iter =
       NewMergingIterator(&internal_comparator_, &list[0], list.size());
   versions_->current()->Ref();
+
+  //whc add
+  versions_-> iterator_sequence_ = versions_->current()->sequence_;
 
   cleanup->mu = &mutex_;
   cleanup->mem = mem_;
