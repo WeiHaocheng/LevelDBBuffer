@@ -24,6 +24,9 @@ struct Table::Rep {
     delete filter;
     delete [] filter_data;
     delete index_block;
+    
+    //whc add
+    ReadStatic::open_num --;
   }
 
   Options options;
@@ -83,6 +86,10 @@ Status Table::Open(const Options& options,
     rep->filter = NULL;
     *table = new Table(rep);
     (*table)->ReadMeta(footer);
+    
+    //whc add
+    ReadStatic::open_num ++;
+    //std::cout<<"block_cache_id:"<<rep->cache_id<<std::endl;
   } else {
     delete index_block;
   }
@@ -180,7 +187,9 @@ Iterator* Table::BlockReader(void* arg,
 
   if (s.ok()) {
     BlockContents contents;
+    // whc change
     if (block_cache != NULL) {
+    //if (0) {
       char cache_key_buffer[16];
       EncodeFixed64(cache_key_buffer, table->rep_->cache_id);
       EncodeFixed64(cache_key_buffer+8, handle.offset());
@@ -239,6 +248,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
     
     //whc add
     ReadStatic::table_get++;
+    ReadStatic::get_flag = 0;
     //if(filter==NULL)
         //std::cout<<"table get no filter"<<std::endl;
     
@@ -249,13 +259,15 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
       //std::cout<<"table get filter not found"<<std::endl;
       ReadStatic::table_bloomfilter_miss++;
     } else {
+      ReadStatic::data_block_read++;
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);
       if (block_iter->Valid()) {
         (*saver)(arg, block_iter->key(), block_iter->value());
+        ReadStatic::get_flag = 1;
       }else{
           //std::cout<<"table get not found"<<std::endl;
-          ReadStatic::table_readfile_miss++;
+          ReadStatic::table_readfile_miss+=0;
       }
       s = block_iter->status();
       delete block_iter;

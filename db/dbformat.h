@@ -75,12 +75,16 @@ class BCJudge{
 //whc add
 class ReadStatic{
   public:
-    static int mem_get;
-    static int level_get[7];
-    static int table_get;
-    static int table_bloomfilter_miss;
-    static int table_readfile_miss;
-    static int table_cache_shoot;
+    static uint64_t mem_get;
+    static uint64_t level_get[7];
+    static uint64_t table_get;
+    static uint64_t table_bloomfilter_miss;
+    static uint64_t table_readfile_miss;
+    static uint64_t table_cache_shoot;
+    static uint64_t data_block_read;
+    static uint64_t index_block_size;
+    static int open_num;
+    static int get_flag;
     //static int level1_get;
     //static int level2_get;
     //static int level3_get;

@@ -258,8 +258,10 @@ Options SanitizeOptions(const std::string& dbname,
       result.info_log = NULL;
     }
   }
+  //whc change
   if (result.block_cache == NULL) {
     result.block_cache = NewLRUCache(8 << 20);
+    //result.block_cache = NewLRUCache(8);
   }
   return result;
 }
@@ -296,12 +298,14 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   else ssdname_ = dbname_;
   
   
-  const int ssd_table_cache_size = 2500;
-  const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles - ssd_table_cache_size - 10;
+  //const int ssd_table_cache_size = 2500;
+  const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
+  //std::cout << "DBImpl:table_cache_size:" << table_cache_size << std::endl;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
 
   //whc add
-  ssd_table_cache_ = new TableCache(ssdname_, &options_, ssd_table_cache_size);
+  //ssd_table_cache_ = new TableCache(ssdname_, &options_, ssd_table_cache_size);
+  ssd_table_cache_ = table_cache_;
 
 //  versions_ = new VersionSet(dbname_, &options_, table_cache_,
                              //&internal_comparator_);
@@ -329,7 +333,8 @@ DBImpl::~DBImpl() {
     std::cout<<"bloomfilter miss "<<ReadStatic::table_bloomfilter_miss<<std::endl;
     std::cout<<"readfile miss "<<ReadStatic::table_readfile_miss<<std::endl;
     std::cout<<"table cache shoot "<<ReadStatic::table_cache_shoot<<std::endl;
-    
+    std::cout<<"data block read "<<ReadStatic::data_block_read<<std::endl;
+    std::cout<<"index size "<<ReadStatic::index_block_size<<std::endl;
 
 
 	// Wait for background work to finish
@@ -1957,8 +1962,12 @@ Status DBImpl::Get(const ReadOptions& options,
     } else {
       //s = current->Get(options, lkey, value, &stats);
       // whc change
+      uint64_t data_block_read_pre = ReadStatic::data_block_read;
+      uint64_t readfile_miss_pre = ReadStatic::table_readfile_miss;
       s = current->BufferGet(options, lkey, value, &stats);
       have_stat_update = true;
+      //if ((ReadStatic::data_block_read - data_block_read_pre) - (ReadStatic::table_readfile_miss - //readfile_miss_pre) > 1)
+          //std::cout<<"dbimpl get error"<<std::endl;
     }
     mutex_.Lock();
   }

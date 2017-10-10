@@ -23,6 +23,7 @@
 #include "db/buffer_iterator.h"
 #include <map>
 #include "db/dbformat.h"
+#include <iostream>
 
 
 namespace leveldb {
@@ -116,6 +117,8 @@ Version::~Version() {
       }
     }
   }
+  
+  std::cout<<"open num"<<ReadStatic::open_num<<std::endl; 
 }
 
 int FindFile(const InternalKeyComparator& icmp,
@@ -476,6 +479,7 @@ Status Version::Get(const ReadOptions& options,
       }
       switch (saver.state) {
         case kNotFound:
+          ReadStatic::table_readfile_miss++;
           break;      // Keep searching in other files
         case kFound:
           return s;
@@ -486,6 +490,8 @@ Status Version::Get(const ReadOptions& options,
           s = Status::Corruption("corrupted key for ", user_key);
           return s;
       }
+      // whc add
+      //std::cout<<"version get have another branch"<<std::endl;
     }
   }
 
@@ -578,6 +584,7 @@ Status Version::BufferGet(const ReadOptions& options,
               }
               switch (saver.state) {
                 case kNotFound:
+                    ReadStatic::table_readfile_miss += ReadStatic::get_flag;
                     continue;      // Keep searching in other files
                 case kFound:
                     ReadStatic::level_get[level]++;
@@ -604,6 +611,7 @@ Status Version::BufferGet(const ReadOptions& options,
     
       switch (saver.state) {
         case kNotFound:
+          ReadStatic::table_readfile_miss += ReadStatic::get_flag;
           break;      // Keep searching in other files
         case kFound:
           ReadStatic::level_get[level]++;

@@ -8,7 +8,7 @@ namespace leveldb{
 
 BufferNodeIterator::BufferNodeIterator(const ReadOptions& options,VersionSet* vset,BufferNode* node)
   :buffernode_(node), 
-  iterator_(vset->ssd_table_cache_->NewIterator(options, node->number, node->filesize)),
+  iterator_(vset->table_cache_->NewIterator(options, node->number, node->filesize)),
   icmp_(&(vset->icmp_)){
       //std::cout<<"buffernode iterator build"<<std::endl;
       //std::cout<<"buffernode iterator file size="<<node->filesize<<std::endl;
@@ -111,7 +111,6 @@ Slice BufferNodeIterator::value()  const{
 }
 
 BufferNodeIterator::~BufferNodeIterator(){
-    //std::cout<<"buffer node iterator release"<<std::endl;
     delete iterator_;
 }
 

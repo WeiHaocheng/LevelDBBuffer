@@ -14,6 +14,8 @@
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include "db/dbformat.h"
+
 #include <iostream>
 
 namespace leveldb {
@@ -227,6 +229,7 @@ Status TableBuilder::Finish() {
 
     // TODO(postrelease): Add stats and other meta blocks
     WriteBlock(&meta_index_block, &metaindex_block_handle);
+    ReadStatic::index_block_size = (filter_block_handle.size()>ReadStatic::index_block_size) ? filter_block_handle.size() : ReadStatic::index_block_size; 
   }
 
   // Write index block
@@ -239,6 +242,7 @@ Status TableBuilder::Finish() {
       r->pending_index_entry = false;
     }
     WriteBlock(&r->index_block, &index_block_handle);
+    //ReadStatic::index_block_size = (index_block_handle.size()>ReadStatic::index_block_size) ? //index_block_handle.size() : ReadStatic::index_block_size; 
   }
 
   // Write footer

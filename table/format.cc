@@ -9,6 +9,7 @@
 #include "table/block.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -107,6 +108,8 @@ Status ReadBlock(RandomAccessFile* file,
         result->data = Slice(data, n);
         result->heap_allocated = false;
         result->cachable = false;  // Do not double-cache
+        //whc add
+        //std::cout<<"heap allocated false"<<std::endl;
       } else {
         result->data = Slice(buf, n);
         result->heap_allocated = true;
